@@ -404,9 +404,15 @@ class TerminalUI:
                     if sub in ("", "1"):
                         self.play_episode(show_name, show_data, all_episodes, target)
                     elif sub == "2":
+                        target_idx = all_episodes.index(target)
+                        if target_idx > 0:
+                            prev_ep = all_episodes[target_idx - 1]
+                            mark_prev = input(f"Mark all {target_idx} preceding episodes (before {target.code}) as watched? [Y/n]: ").strip().lower()
+                            if mark_prev in ("", "y", "yes"):
+                                show_data.mark_all_up_to(prev_ep, all_episodes)
                         show_data.mark_watched(target, completed=False)
                         self.cfg.save()
-                        print(f"{Colors.BRIGHT_GREEN}Set {target.code} as current episode.{Colors.RESET}")
+                        print(f"{Colors.BRIGHT_GREEN}✓ Set {target.code} as current episode.{Colors.RESET}")
                     elif sub == "3":
                         show_data.mark_all_up_to(target, all_episodes)
                         self.cfg.save()
@@ -443,26 +449,26 @@ class TerminalUI:
             print(f"{Colors.RED}Episode S{target_s:02d}E{target_e:02d} not found in this show.{Colors.RESET}")
             return
 
+        target_idx = episodes.index(target_ep)
         print(f"\nSelected: {Colors.BOLD}{target_ep.display_name}{Colors.RESET}")
-        print("  [1] Mark all episodes up to this one as WATCHED")
-        print("  [2] Set this as the NEXT episode to watch (unwatched)")
+        print(f"  [1] Mark up to and INCLUDING this episode as WATCHED ({target_idx + 1} episodes)")
+        print(f"  [2] Set this as the NEXT episode to watch (marks {target_idx} prior episodes as watched)")
         print("  [c] Cancel")
         c = input("Choice [1]: ").strip().lower()
 
         if c in ("", "1"):
             show_data.mark_all_up_to(target_ep, episodes)
             self.cfg.save()
-            print(f"{Colors.BRIGHT_GREEN}✓ Marked all up to {target_ep.code} as watched!{Colors.RESET}")
+            print(f"{Colors.BRIGHT_GREEN}✓ Marked all {target_idx + 1} episodes up to {target_ep.code} as watched!{Colors.RESET}")
         elif c == "2":
-            # Find previous episode if any, mark it watched
-            idx = episodes.index(target_ep)
-            if idx > 0:
-                prev_ep = episodes[idx - 1]
-                show_data.mark_watched(prev_ep, completed=True)
+            if target_idx > 0:
+                prev_ep = episodes[target_idx - 1]
+                show_data.mark_all_up_to(prev_ep, episodes)
             else:
                 show_data.last_watched = None
+                show_data.watched_rel_paths.clear()
             self.cfg.save()
-            print(f"{Colors.BRIGHT_GREEN}✓ Next episode set to {target_ep.code}.{Colors.RESET}")
+            print(f"{Colors.BRIGHT_GREEN}✓ Next episode set to {target_ep.code}. Marked {target_idx} preceding episodes as watched!{Colors.RESET}")
 
     def menu_shows_manager(self):
         """Manager for switching, adding, or deleting shows."""
