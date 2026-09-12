@@ -101,11 +101,14 @@ State and settings are stored in standard XDG JSON format at:
 ~/.config/opennewepisode/config.json
 ```
 
-Settings customizable through the menu or file:
-- `fullscreen`: Whether VLC opens in fullscreen mode (`true`/`false`).
-- `play_and_exit`: Closes VLC automatically when episode finishes (`true`/`false`).
+Settings customizable through the menu (Option 8) or in `config.json`:
+- `minimal_view`: Whether VLC opens in compact/minimized view mode without menus and toolbars (`--qt-minimal-view`, default: `true`).
+- `english_subtitles`: Automatically load and display the first English subtitle track found (`--sub-language=eng,en`, default: `true`).
+- `english_audio`: Automatically select the first English audio track found (`--audio-language=eng,en`, default: `true`).
+- `fullscreen`: Whether VLC opens in fullscreen mode (default: `false` when minimal view is enabled).
+- `play_and_exit`: Closes VLC automatically when episode finishes (`--play-and-exit`, default: `true`).
 - `vlc_command`: VLC binary path (default: `vlc`).
-- `extra_vlc_args`: Custom flags passed to VLC (e.g., subtitle preferences, audio tracks).
+- `extra_vlc_args`: Custom flags passed to VLC (e.g. `--sub-text-scale 120`).
 
 ---
 

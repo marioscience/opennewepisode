@@ -245,6 +245,15 @@ class TerminalUI:
             print(f"▶ {Colors.BOLD}Opening VLC for:{Colors.RESET} {Colors.BRIGHT_CYAN}{show_name}{Colors.RESET}")
             print(f"  {Colors.BOLD}{current_ep.display_name}{Colors.RESET}")
             print(f"{Colors.DIM}  File: {current_ep.path}{Colors.RESET}")
+
+            # Display active player options
+            s = self.cfg.settings
+            mode_str = "Minimized View (--qt-minimal-view)" if s.minimal_view else ("Fullscreen" if s.fullscreen else "Standard Window")
+            print(f"  {Colors.BOLD}View Mode:{Colors.RESET}  {mode_str}")
+            if s.english_audio:
+                print(f"  {Colors.BOLD}Audio:{Colors.RESET}      English (first found)")
+            if s.english_subtitles:
+                print(f"  {Colors.BOLD}Subtitles:{Colors.RESET}  English (first found)")
             print(f"{Colors.BRIGHT_GREEN}=================================================={Colors.RESET}")
             print(f"{Colors.GRAY}(Waiting for VLC playback to finish...){Colors.RESET}")
 
@@ -559,31 +568,50 @@ class TerminalUI:
         while True:
             s = self.cfg.settings
             print(f"\n{Colors.BRIGHT_CYAN}--- Player Settings ---{Colors.RESET}")
+            mv_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.minimal_view else f"{Colors.RED}OFF{Colors.RESET}"
             fs_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.fullscreen else f"{Colors.RED}OFF{Colors.RESET}"
+            sub_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.english_subtitles else f"{Colors.RED}OFF{Colors.RESET}"
+            aud_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.english_audio else f"{Colors.RED}OFF{Colors.RESET}"
             pe_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.play_and_exit else f"{Colors.RED}OFF{Colors.RESET}"
 
-            print(f"  [1] Fullscreen: {fs_status}")
-            print(f"  [2] Auto-Exit on Finish (--play-and-exit): {pe_status}")
-            print(f"  [3] VLC Command: {Colors.BOLD}{s.vlc_command}{Colors.RESET}")
-            print(f"  [4] Extra VLC Arguments: {s.extra_vlc_args or 'None'}")
+            print(f"  [1] Minimized View Mode (--qt-minimal-view): {mv_status}")
+            print(f"  [2] Fullscreen Mode: {fs_status}")
+            print(f"  [3] Auto English Subtitles: {sub_status}")
+            print(f"  [4] Auto English Audio: {aud_status}")
+            print(f"  [5] Auto-Exit on Finish (--play-and-exit): {pe_status}")
+            print(f"  [6] VLC Command: {Colors.BOLD}{s.vlc_command}{Colors.RESET}")
+            print(f"  [7] Extra VLC Arguments: {s.extra_vlc_args or 'None'}")
             print(f"  [{Colors.RED}b{Colors.RESET}] Back to Main Menu")
 
-            c = input("\nToggle setting [1-4] or 'b': ").strip().lower()
+            c = input("\nToggle setting [1-7] or 'b': ").strip().lower()
             if c == "b" or not c:
                 break
             elif c == "1":
-                s.fullscreen = not s.fullscreen
+                s.minimal_view = not s.minimal_view
+                if s.minimal_view:
+                    s.fullscreen = False
                 self.cfg.save()
             elif c == "2":
-                s.play_and_exit = not s.play_and_exit
+                s.fullscreen = not s.fullscreen
+                if s.fullscreen:
+                    s.minimal_view = False
                 self.cfg.save()
             elif c == "3":
+                s.english_subtitles = not s.english_subtitles
+                self.cfg.save()
+            elif c == "4":
+                s.english_audio = not s.english_audio
+                self.cfg.save()
+            elif c == "5":
+                s.play_and_exit = not s.play_and_exit
+                self.cfg.save()
+            elif c == "6":
                 new_cmd = input(f"Enter VLC executable path/command [{s.vlc_command}]: ").strip()
                 if new_cmd:
                     s.vlc_command = new_cmd
                     self.cfg.save()
-            elif c == "4":
-                print("Enter space-separated VLC arguments (e.g. '--sub-language eng'):")
+            elif c == "7":
+                print("Enter space-separated VLC arguments (e.g. '--sub-text-scale 120'):")
                 args_str = input("Args: ").strip()
                 s.extra_vlc_args = args_str.split() if args_str else []
                 self.cfg.save()

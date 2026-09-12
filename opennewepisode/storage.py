@@ -139,7 +139,10 @@ class ShowData:
 @dataclass
 class PlayerSettings:
     vlc_command: str = "vlc"
-    fullscreen: bool = True
+    fullscreen: bool = False
+    minimal_view: bool = True
+    english_subtitles: bool = True
+    english_audio: bool = True
     play_and_exit: bool = True
     extra_vlc_args: List[str] = field(default_factory=list)
 
@@ -168,11 +171,24 @@ class ConfigManager:
 
             self.active_show_name = data.get("active_show")
 
-            # Load settings
+            # Load settings with migration support for new defaults
             s_data = data.get("settings", {})
+            has_minimal_view = "minimal_view" in s_data
+            if not has_minimal_view:
+                minimal_view = True
+                fullscreen = False
+            else:
+                minimal_view = s_data.get("minimal_view", True)
+                fullscreen = s_data.get("fullscreen", False)
+            english_subtitles = s_data.get("english_subtitles", True)
+            english_audio = s_data.get("english_audio", True)
+
             self.settings = PlayerSettings(
                 vlc_command=s_data.get("vlc_command", "vlc"),
-                fullscreen=s_data.get("fullscreen", True),
+                fullscreen=fullscreen,
+                minimal_view=minimal_view,
+                english_subtitles=english_subtitles,
+                english_audio=english_audio,
                 play_and_exit=s_data.get("play_and_exit", True),
                 extra_vlc_args=s_data.get("extra_vlc_args", []),
             )
@@ -203,6 +219,9 @@ class ConfigManager:
                     self.active_show_name = next(iter(self.shows))
                 else:
                     self.active_show_name = None
+
+            if not has_minimal_view:
+                self.save()
 
         except Exception:
             # In case of corruption, reinit

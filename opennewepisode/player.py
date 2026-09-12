@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Player module for launching VLC and handling playback lifecycle."""
 
+import json
 import shutil
 import subprocess
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from opennewepisode.scanner import Episode
 from opennewepisode.storage import PlayerSettings
@@ -26,11 +27,150 @@ def resolve_vlc_binary(preferred_cmd: str = "vlc") -> Optional[str]:
         return which_path
 
     # Common Linux locations
-    for candidate in ["/usr/bin/vlc", "/snap/bin/vlc", "/usr/local/bin/vlc"]:
+    for candidate in ["/snap/bin/vlc", "/usr/bin/vlc", "/usr/local/bin/vlc"]:
         if Path(candidate).is_file():
             return candidate
 
     return None
+
+
+def detect_external_subtitles(video_path: Path) -> Optional[Path]:
+    """
+    Searches for external subtitle files matching the episode,
+    prioritizing English subtitle files (.en.srt, .eng.srt, .srt).
+    """
+    parent = video_path.parent
+    stem = video_path.stem
+
+    # High-priority english candidates
+    english_candidates = [
+        parent / f"{stem}.en.srt",
+        parent / f"{stem}.eng.srt",
+        parent / f"{stem}.English.srt",
+        parent / f"{stem}.en.sub",
+        parent / f"{stem}.eng.sub",
+        parent / f"{stem}.en.vtt",
+    ]
+    for cand in english_candidates:
+        if cand.is_file():
+            return cand
+
+    # Subdirectories like Subs/ or Subtitles/
+    for sub_dir_name in ["Subs", "subs", "Subtitles", "subtitles"]:
+        sub_dir = parent / sub_dir_name
+        if sub_dir.is_dir():
+            for f in sorted(sub_dir.glob("*.srt")):
+                if "eng" in f.stem.lower() or "en" in f.stem.lower():
+                    return f
+
+    # Fallback generic subtitle with same stem
+    generic_candidates = [
+        parent / f"{stem}.srt",
+        parent / f"{stem}.sub",
+        parent / f"{stem}.vtt",
+    ]
+    for cand in generic_candidates:
+        if cand.is_file():
+            return cand
+
+    return None
+
+
+def probe_media_info(video_path: Path) -> Dict[str, Any]:
+    """
+    Probes video file using ffprobe if available to discover audio & subtitle tracks.
+    """
+    info: Dict[str, Any] = {
+        "has_english_audio": False,
+        "has_english_sub": False,
+        "audio_tracks": [],
+        "subtitle_tracks": [],
+    }
+
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return info
+
+    try:
+        res = subprocess.run(
+            [
+                ffprobe, "-v", "error",
+                "-show_entries", "stream=index,codec_type:stream_tags=language,title",
+                "-of", "json", str(video_path)
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if res.returncode == 0:
+            data = json.loads(res.stdout)
+            for stream in data.get("streams", []):
+                ctype = stream.get("codec_type")
+                tags = stream.get("tags", {})
+                lang = tags.get("language", "und").lower()
+                title = tags.get("title", "")
+                track_item = {"index": stream.get("index"), "lang": lang, "title": title}
+
+                if ctype == "audio":
+                    info["audio_tracks"].append(track_item)
+                    if lang in ("eng", "en", "english"):
+                        info["has_english_audio"] = True
+                elif ctype == "subtitle":
+                    info["subtitle_tracks"].append(track_item)
+                    if lang in ("eng", "en", "english"):
+                        info["has_english_sub"] = True
+
+    except Exception:
+        pass
+
+    return info
+
+
+def build_vlc_command(
+    episode: Episode,
+    settings: PlayerSettings,
+    extra_args: Optional[List[str]] = None,
+) -> List[str]:
+    """
+    Constructs the list of command-line arguments for VLC.
+    """
+    vlc_bin = resolve_vlc_binary(settings.vlc_command) or settings.vlc_command
+    cmd = [vlc_bin]
+
+    # Minimized View Mode (without window menus and toolbars)
+    if settings.minimal_view:
+        cmd.append("--qt-minimal-view")
+
+    # Fullscreen vs Windowed
+    if settings.fullscreen:
+        cmd.append("--fullscreen")
+    else:
+        cmd.append("--no-fullscreen")
+
+    # Auto English Audio
+    if settings.english_audio:
+        cmd.append("--audio-language=eng,en,English")
+
+    # Auto English Subtitles
+    if settings.english_subtitles:
+        cmd.append("--sub-language=eng,en,English")
+        ext_sub = detect_external_subtitles(episode.path)
+        if ext_sub:
+            cmd.append(f"--sub-file={ext_sub}")
+
+    # Play and Exit
+    if settings.play_and_exit:
+        cmd.append("--play-and-exit")
+
+    # User-configured extra args
+    if settings.extra_vlc_args:
+        cmd.extend(settings.extra_vlc_args)
+
+    if extra_args:
+        cmd.extend(extra_args)
+
+    cmd.append(str(episode.path))
+    return cmd
 
 
 def launch_vlc(
@@ -50,19 +190,7 @@ def launch_vlc(
             "Please ensure VLC is installed."
         )
 
-    cmd = [vlc_bin]
-    if settings.fullscreen:
-        cmd.append("--fullscreen")
-    if settings.play_and_exit:
-        cmd.append("--play-and-exit")
-
-    if settings.extra_vlc_args:
-        cmd.extend(settings.extra_vlc_args)
-
-    if extra_args:
-        cmd.extend(extra_args)
-
-    cmd.append(str(episode.path))
+    cmd = build_vlc_command(episode, settings, extra_args)
 
     try:
         # Run VLC with suppressed stdout/stderr to keep the terminal pristine
