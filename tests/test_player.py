@@ -24,10 +24,10 @@ class TestPlayer(unittest.TestCase):
         settings = PlayerSettings()
         cmd = build_vlc_command(self.ep, settings)
 
-        # Minimized view mode
+        # Opens in fullscreen AND keeps minimal interface mode
         self.assertIn("--qt-minimal-view", cmd)
-        self.assertIn("--no-fullscreen", cmd)
-        self.assertNotIn("--fullscreen", cmd)
+        self.assertIn("--fullscreen", cmd)
+        self.assertNotIn("--no-fullscreen", cmd)
 
         # English audio & subtitles
         self.assertIn("--audio-language=eng,en,English", cmd)
@@ -37,13 +37,13 @@ class TestPlayer(unittest.TestCase):
         self.assertIn("--play-and-exit", cmd)
         self.assertEqual(cmd[-1], str(self.ep.path))
 
-    def test_fullscreen_toggle(self):
-        settings = PlayerSettings(fullscreen=True, minimal_view=False)
+    def test_windowed_mode(self):
+        settings = PlayerSettings(fullscreen=False, minimal_view=True)
         cmd = build_vlc_command(self.ep, settings)
 
-        self.assertIn("--fullscreen", cmd)
-        self.assertNotIn("--no-fullscreen", cmd)
-        self.assertNotIn("--qt-minimal-view", cmd)
+        self.assertIn("--no-fullscreen", cmd)
+        self.assertNotIn("--fullscreen", cmd)
+        self.assertIn("--qt-minimal-view", cmd)
 
     def test_subtitles_disabled(self):
         settings = PlayerSettings(english_subtitles=False, english_audio=False)

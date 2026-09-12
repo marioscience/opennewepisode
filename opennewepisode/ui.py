@@ -248,7 +248,14 @@ class TerminalUI:
 
             # Display active player options
             s = self.cfg.settings
-            mode_str = "Minimized View (--qt-minimal-view)" if s.minimal_view else ("Fullscreen" if s.fullscreen else "Standard Window")
+            if s.fullscreen and s.minimal_view:
+                mode_str = "Fullscreen (Minimal Interface on exit)"
+            elif s.fullscreen:
+                mode_str = "Fullscreen"
+            elif s.minimal_view:
+                mode_str = "Minimized Window (--qt-minimal-view)"
+            else:
+                mode_str = "Standard Window"
             print(f"  {Colors.BOLD}View Mode:{Colors.RESET}  {mode_str}")
             if s.english_audio:
                 print(f"  {Colors.BOLD}Audio:{Colors.RESET}      English (first found)")
@@ -588,13 +595,9 @@ class TerminalUI:
                 break
             elif c == "1":
                 s.minimal_view = not s.minimal_view
-                if s.minimal_view:
-                    s.fullscreen = False
                 self.cfg.save()
             elif c == "2":
                 s.fullscreen = not s.fullscreen
-                if s.fullscreen:
-                    s.minimal_view = False
                 self.cfg.save()
             elif c == "3":
                 s.english_subtitles = not s.english_subtitles

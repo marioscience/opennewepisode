@@ -139,7 +139,7 @@ class ShowData:
 @dataclass
 class PlayerSettings:
     vlc_command: str = "vlc"
-    fullscreen: bool = False
+    fullscreen: bool = True
     minimal_view: bool = True
     english_subtitles: bool = True
     english_audio: bool = True
@@ -174,12 +174,8 @@ class ConfigManager:
             # Load settings with migration support for new defaults
             s_data = data.get("settings", {})
             has_minimal_view = "minimal_view" in s_data
-            if not has_minimal_view:
-                minimal_view = True
-                fullscreen = False
-            else:
-                minimal_view = s_data.get("minimal_view", True)
-                fullscreen = s_data.get("fullscreen", False)
+            minimal_view = s_data.get("minimal_view", True)
+            fullscreen = s_data.get("fullscreen", True)
             english_subtitles = s_data.get("english_subtitles", True)
             english_audio = s_data.get("english_audio", True)
 
