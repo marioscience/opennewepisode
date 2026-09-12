@@ -118,3 +118,23 @@ Run the automated test suite:
 ```bash
 python3 -m unittest discover tests
 ```
+
+---
+
+## 🤔 Why "onep"?
+
+The name **`onep`** has a few fun and practical meanings:
+
+1. **Direct Acronym**: A natural contraction of the project's title:  
+   **O**pen**N**ew**EP**isode &rarr; **`onep`**.
+2. **"Just One Ep"**: A tribute to the classic, universal binge-watcher's lie:  
+   > *"Just **one ep**, and then I swear I'm going to sleep!"* 😴
+3. **CLI Ergonomics**: Typing `opennewepisode` is 14 keystrokes. **`onep`** is a punchy 4-letter shortcut easily typed with one hand so you can get straight to watching.
+
+---
+
+## 🤝 Credits
+
+- **Created by**: **Antigravity** (Google DeepMind)
+- **Vibe Coding Assistance & Product Direction**: **Mario Matos** ([@marioscience](https://github.com/marioscience))
+
