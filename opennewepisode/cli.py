@@ -260,24 +260,65 @@ def cmd_open_file(
 
 
 def cmd_associate():
-    """Associates OpenNewEpisode with video MIME types via xdg-mime."""
+    """Associates OpenNewEpisode with video MIME types via xdg-mime and installs desktop overrides."""
     import shutil
     import subprocess
     desktop_name = "opennewepisode.desktop"
+    app_dir = Path.home() / ".local" / "share" / "applications"
+    app_dir.mkdir(parents=True, exist_ok=True)
+
+    # Ensure opennewepisode.desktop has absolute path
+    onep_bin = Path.home() / ".local" / "bin" / "onep"
+    desktop_file = app_dir / "opennewepisode.desktop"
+    desktop_content = f"""[Desktop Entry]
+Type=Application
+Name=OpenNewEpisode
+GenericName=TV Show Player & Resume Tracker
+Comment=Watch TV show episodes with automatic resume, auto-play, and progress tracking
+Exec={onep_bin} open %F
+Icon=vlc
+Terminal=false
+Categories=AudioVideo;Player;Recorder;
+MimeType=video/x-matroska;application/x-matroska;video/mp4;video/avi;video/quicktime;video/x-msvideo;video/x-flv;video/webm;video/x-ms-wmv;video/mpeg;
+StartupNotify=false
+Keywords=video;vlc;tv;episodes;series;player;resume;
+"""
+    desktop_file.write_text(desktop_content, encoding="utf-8")
+
+    # Also override vlc_vlc.desktop so double-clicks mapped to VLC route through onep
+    vlc_override = app_dir / "vlc_vlc.desktop"
+    vlc_override_content = f"""[Desktop Entry]
+X-SnapInstanceName=vlc
+Version=1.0
+Name=VLC media player
+GenericName=Media player
+Exec={onep_bin} open %U
+Icon=vlc
+Terminal=false
+Type=Application
+Categories=AudioVideo;Player;Recorder;
+MimeType=video/x-matroska;application/x-matroska;video/mp4;video/avi;video/quicktime;video/x-msvideo;video/x-flv;video/webm;video/x-ms-wmv;video/mpeg;
+"""
+    vlc_override.write_text(vlc_override_content, encoding="utf-8")
+
+    if shutil.which("update-desktop-database"):
+        subprocess.run(["update-desktop-database", str(app_dir)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     mime_types = [
         "video/x-matroska",
+        "application/x-matroska",
         "video/mp4",
         "video/x-msvideo",
         "video/quicktime",
         "video/webm",
         "video/x-flv",
+        "video/x-ms-wmv",
+        "video/mpeg",
     ]
-    if not shutil.which("xdg-mime"):
-        print(f"{Colors.RED}xdg-mime not found. Please associate OpenNewEpisode in your file manager.{Colors.RESET}")
-        return
+    if shutil.which("xdg-mime"):
+        for m in mime_types:
+            subprocess.run(["xdg-mime", "default", desktop_name, m], check=False)
 
-    for m in mime_types:
-        subprocess.run(["xdg-mime", "default", desktop_name, m], check=False)
     print(f"{Colors.BRIGHT_GREEN}✓ Successfully set OpenNewEpisode as default video player for desktop double-click!{Colors.RESET}")
     print("Videos in your tracked TV shows will now automatically resume or ask what to do when double-clicked.")
     print("Non-show videos will open directly in VLC as usual.")

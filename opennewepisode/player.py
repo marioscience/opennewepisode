@@ -290,13 +290,14 @@ def launch_vlc(
         return -1, last_pos, duration
 
 
-def launch_vlc_direct(file_path: Path, vlc_cmd: str = "vlc", extra_args: Optional[List[str]] = None) -> int:
+def launch_vlc_direct(file_path: Optional[Path] = None, vlc_cmd: str = "vlc", extra_args: Optional[List[str]] = None) -> int:
     """Launches VLC directly for non-show arbitrary video files without tracking."""
     vlc_bin = resolve_vlc_binary(vlc_cmd) or vlc_cmd
     cmd = [vlc_bin]
     if extra_args:
         cmd.extend(extra_args)
-    cmd.append(str(file_path))
+    if file_path and str(file_path):
+        cmd.append(str(file_path))
     try:
         proc = subprocess.run(cmd, check=False)
         return proc.returncode

@@ -66,7 +66,7 @@ def prompt_out_of_order(
             "--title=OpenNewEpisode",
             f"--text={prompt_text}",
             "--radiolist",
-            "--column=",
+            "--column=Select",
             "--column=Action",
             "--hide-header",
             "TRUE",
@@ -80,14 +80,16 @@ def prompt_out_of_order(
         ]
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            if res.returncode != 0:
+            if res.returncode == 1:
                 # User clicked Cancel or closed dialog
                 return "cancel"
-            choice = res.stdout.strip()
-            if choice == opt_one_off:
-                return "one_off"
-            elif choice == opt_current:
-                return "current"
+            elif res.returncode == 0:
+                choice = res.stdout.strip()
+                if choice == opt_one_off:
+                    return "one_off"
+                elif choice == opt_current:
+                    return "current"
+                return "switch"
             return "switch"
         except Exception:
             return "switch"
