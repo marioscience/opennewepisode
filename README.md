@@ -37,14 +37,47 @@ Designed to be **generic for any TV series**, with automatic episode detection, 
 
 ## 📦 Quick Start
 
-### 1. Installation
-The symlink is installed into `~/.local/bin` (already in your `$PATH`):
+### 1. Prerequisites
+OpenNewEpisode has **zero external Python dependencies** (pure standard library). You only need:
+- **Python 3.8+**
+- **VLC Media Player** (`sudo apt install vlc` or `snap install vlc`)
+- **Zenity** *(optional, for native pop-up dialogs on GUI double-clicks; pre-installed on GNOME/Ubuntu, or `sudo apt install zenity`)*
+
+### 2. Installation
+Clone the repository and run the installer:
 
 ```bash
+git clone https://github.com/marioscience/opennewepisode.git
+cd opennewepisode
 ./install.sh
 ```
 
-Now you can invoke either `opennewepisode` or `onep`.
+This symlinks `onep` and `opennewepisode` into `~/.local/bin` (already in your `$PATH`), installs the desktop entry, and registers it with your system.
+
+### 3. Desktop Double-Click Integration (Recommended)
+To enable double-clicking video files in your file manager (Files / Nautilus) to automatically route through OpenNewEpisode with resume tracking:
+
+```bash
+onep associate
+```
+
+*(Non-show videos will continue to open transparently in standard VLC).*
+
+### 4. Add Your First Show
+Point OpenNewEpisode to the folder containing your TV series:
+
+```bash
+onep add "/path/to/Your Show Name"
+```
+
+### 5. Catch Up to Current Episode (Optional)
+If you've already started watching the show outside the program, jump to where you left off with one command:
+
+```bash
+onep set <season> <episode>
+# Example: onep set 2 4
+```
+This marks all preceding episodes as watched `[✓]` and queues Season 2 Episode 4 as Up Next. If you're starting fresh from the beginning, skip this step!
 
 ---
 
