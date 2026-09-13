@@ -18,7 +18,8 @@ Designed to be **generic for any TV series**, with automatic episode detection, 
 - **VLC Integration**:
   - Launches VLC with optional `--fullscreen` and `--play-and-exit`.
   - Suppresses noisy player terminal logs.
-  - Interactive post-playback prompt to mark watched, advance, or binge-watch the next episode.
+  - **Auto-Play Next Episode**: Automatically advances and launches the next episode (including seamless transitions to the next season when a season ends) with a customizable countdown.
+  - Automatically marks played episodes as watched by default.
 - **Zero External Dependencies**: Pure Python 3 standard library. No `pip install` required.
 - **Global Terminal Access**: Run `opennewepisode` or shortcut `onep` anywhere in your terminal.
 
@@ -107,6 +108,8 @@ Settings customizable through the menu (Option 8) or in `config.json`:
 - `english_subtitles`: Automatically load and display the first English subtitle track found (`--sub-language=eng,en`, default: `true`).
 - `english_audio`: Automatically select the first English audio track found (`--audio-language=eng,en`, default: `true`).
 - `play_and_exit`: Closes VLC automatically when episode finishes (`--play-and-exit`, default: `true`).
+- `auto_play_next`: Automatically plays the next episode upon completion across seasons (default: `true`).
+- `auto_play_delay`: Countdown seconds before auto-playing next episode (default: `5`, set to `0` for immediate).
 - `vlc_command`: VLC binary path (default: `vlc`).
 - `extra_vlc_args`: Custom flags passed to VLC (e.g. `--sub-text-scale 120`).
 

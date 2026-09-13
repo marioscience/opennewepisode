@@ -68,6 +68,8 @@ class TestStorage(unittest.TestCase):
         self.cm.add_show(Path("/show"), "My Show")
         show_data = self.cm.shows["My Show"]
         show_data.mark_watched(self.episodes[0], completed=True)
+        self.cm.settings.auto_play_next = True
+        self.cm.settings.auto_play_delay = 3
         self.cm.save()
 
         # Reload in new instance
@@ -76,6 +78,23 @@ class TestStorage(unittest.TestCase):
         loaded_show = new_cm.shows["My Show"]
         self.assertTrue(loaded_show.is_watched(self.episodes[0]))
         self.assertEqual(loaded_show.last_watched.episode, 1)
+        self.assertTrue(new_cm.settings.auto_play_next)
+        self.assertEqual(new_cm.settings.auto_play_delay, 3)
+
+    def test_next_episode_cross_season(self):
+        multi_season_eps = [
+            Episode(Path("/show/S01E01.mkv"), "S01E01.mkv", 1, 1, "Pilot"),
+            Episode(Path("/show/S01E02.mkv"), "S01E02.mkv", 1, 2, "Season 1 Finale"),
+            Episode(Path("/show/S02E01.mkv"), "S02E01.mkv", 2, 1, "Season 2 Premiere"),
+        ]
+        show = ShowData(path="/show")
+        # Mark season 1 finale completed
+        show.mark_watched(multi_season_eps[1], completed=True)
+        next_ep = show.get_next_episode(multi_season_eps)
+        self.assertIsNotNone(next_ep)
+        self.assertEqual(next_ep.code, "S02E01")
+        self.assertEqual(next_ep.season, 2)
+        self.assertEqual(next_ep.episode, 1)
 
 
 if __name__ == "__main__":

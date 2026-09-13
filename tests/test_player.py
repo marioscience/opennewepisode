@@ -7,7 +7,7 @@ from pathlib import Path
 
 from opennewepisode.scanner import Episode
 from opennewepisode.storage import PlayerSettings
-from opennewepisode.player import build_vlc_command, detect_external_subtitles
+from opennewepisode.player import build_vlc_command, detect_external_subtitles, countdown_prompt, PostWatchAction
 
 
 class TestPlayer(unittest.TestCase):
@@ -63,6 +63,22 @@ class TestPlayer(unittest.TestCase):
             found = detect_external_subtitles(video)
             self.assertIsNotNone(found)
             self.assertEqual(found.name, "Show - S01E01.en.srt")
+
+    def test_auto_play_settings_defaults(self):
+        settings = PlayerSettings()
+        self.assertTrue(settings.auto_play_next)
+        self.assertEqual(settings.auto_play_delay, 5)
+
+    def test_countdown_prompt_zero_delay(self):
+        next_ep = Episode(
+            path=Path("/tmp/test_show/S01E02.mkv"),
+            relative_path="S01E02.mkv",
+            season=1,
+            episode=2,
+            title="Second",
+        )
+        action = countdown_prompt(next_ep, delay=0)
+        self.assertEqual(action, PostWatchAction.PLAY_NEXT)
 
 
 if __name__ == "__main__":

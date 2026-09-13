@@ -2,6 +2,7 @@
 """Player module for launching VLC and handling playback lifecycle."""
 
 import json
+import select
 import shutil
 import subprocess
 import sys
@@ -238,3 +239,48 @@ def prompt_post_watch(episode: Episode, next_ep: Optional[Episode]) -> PostWatch
             return PostWatchAction.QUIT
         else:
             print("\033[31mInvalid option. Enter Y, n, p, or q.\033[0m")
+
+
+def countdown_prompt(next_ep: Episode, delay: int = 5) -> PostWatchAction:
+    """
+    Shows a countdown prompt before automatically playing the next episode.
+    Allows user to press Enter/p to play immediately, s/q to stop, or n to keep current episode incomplete.
+    If timeout expires or non-interactive, returns PLAY_NEXT.
+    """
+    print()
+    print(f"\033[1;36m▶ Up Next:\033[0m \033[1m{next_ep.display_name}\033[0m")
+    print("\033[90m--------------------------------------------------\033[0m")
+    print(f"  \033[1;32m[Enter/p]\033[0m Play now")
+    print(f"  \033[1;33m[s/q]\033[0m     Stop auto-play (marked watched, return to menu)")
+    print(f"  \033[1;34m[n]\033[0m       Didn't finish: keep current (resume here next time)")
+    print("\033[90m--------------------------------------------------\033[0m")
+
+    if delay <= 0 or not sys.stdin.isatty():
+        return PostWatchAction.PLAY_NEXT
+
+    try:
+        for remaining in range(delay, 0, -1):
+            sys.stdout.write(f"\r\033[1;33m⏱ Auto-playing in {remaining}s...\033[0m (Enter=Play, s=Stop, n=Keep): ")
+            sys.stdout.flush()
+
+            rlist, _, _ = select.select([sys.stdin], [], [], 1.0)
+            if rlist:
+                choice = sys.stdin.readline().strip().lower()
+                sys.stdout.write("\r\033[K")
+                sys.stdout.flush()
+                if choice in ("", "p", "y", "play", "yes"):
+                    return PostWatchAction.PLAY_NEXT
+                elif choice in ("s", "q", "stop", "quit", "exit"):
+                    return PostWatchAction.QUIT
+                elif choice in ("n", "no"):
+                    return PostWatchAction.KEEP_CURRENT
+                else:
+                    return PostWatchAction.PLAY_NEXT
+
+        sys.stdout.write("\r\033[K")
+        sys.stdout.flush()
+        return PostWatchAction.PLAY_NEXT
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return PostWatchAction.QUIT
+

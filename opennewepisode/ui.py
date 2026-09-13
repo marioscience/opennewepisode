@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 from opennewepisode.scanner import Episode, scan_episodes
 from opennewepisode.storage import ConfigManager, ShowData
-from opennewepisode.player import PostWatchAction, launch_vlc, prompt_post_watch
+from opennewepisode.player import PostWatchAction, countdown_prompt, launch_vlc, prompt_post_watch
 
 
 class Colors:
@@ -261,40 +261,61 @@ class TerminalUI:
                 print(f"  {Colors.BOLD}Audio:{Colors.RESET}      English (first found)")
             if s.english_subtitles:
                 print(f"  {Colors.BOLD}Subtitles:{Colors.RESET}  English (first found)")
+            if s.auto_play_next:
+                print(f"  {Colors.BOLD}Auto-Play:{Colors.RESET}  Next Episode (countdown: {s.auto_play_delay}s)")
             print(f"{Colors.BRIGHT_GREEN}=================================================={Colors.RESET}")
             print(f"{Colors.GRAY}(Waiting for VLC playback to finish...){Colors.RESET}")
 
-            # Record that we opened this episode (completed=False until confirmed)
+            # Record that we opened this episode (completed=False until finished)
             show_data.mark_watched(current_ep, completed=False)
             self.cfg.save()
 
             # Launch VLC
             launch_vlc(current_ep, self.cfg.settings)
 
-            # Post-watch prompt
-            action = prompt_post_watch(current_ep, next_in_line)
+            # Automatically mark episode as watched by default
+            show_data.mark_watched(current_ep, completed=True)
+            self.cfg.save()
+            print(f"\n{Colors.BRIGHT_GREEN}✓ Marked {current_ep.code} ({current_ep.title or 'Episode'}) as watched.{Colors.RESET}")
 
-            if action == PostWatchAction.MARK_WATCHED_AND_ADVANCE:
-                show_data.mark_watched(current_ep, completed=True)
-                self.cfg.save()
-                print(f"{Colors.BRIGHT_GREEN}✓ Marked {current_ep.code} as watched.{Colors.RESET}")
-                break
+            if self.cfg.settings.auto_play_next:
+                if next_in_line:
+                    # Announce season transition if next episode is a new season
+                    if next_in_line.season != current_ep.season:
+                        print(f"\n{Colors.BRIGHT_MAGENTA}╔══════════════════════════════════════════════════════════════╗{Colors.RESET}")
+                        print(f"{Colors.BRIGHT_MAGENTA}║  🎉 Season {current_ep.season:02d} Complete! Advancing to Season {next_in_line.season:02d}!             ║{Colors.RESET}")
+                        print(f"{Colors.BRIGHT_MAGENTA}╚══════════════════════════════════════════════════════════════╝{Colors.RESET}")
 
-            elif action == PostWatchAction.PLAY_NEXT:
-                show_data.mark_watched(current_ep, completed=True)
-                self.cfg.save()
-                print(f"{Colors.BRIGHT_GREEN}✓ Marked {current_ep.code} as watched.{Colors.RESET}")
-                current_ep = next_in_line
-
-            elif action == PostWatchAction.KEEP_CURRENT:
-                # Keep completed = False so it re-opens this exact one next time
-                show_data.mark_watched(current_ep, completed=False)
-                self.cfg.save()
-                print(f"{Colors.YELLOW}↺ Kept {current_ep.code} as current (will reopen here next time).{Colors.RESET}")
-                break
-
-            elif action == PostWatchAction.QUIT:
-                break
+                    action = countdown_prompt(next_in_line, self.cfg.settings.auto_play_delay)
+                    if action == PostWatchAction.PLAY_NEXT:
+                        current_ep = next_in_line
+                    elif action == PostWatchAction.KEEP_CURRENT:
+                        # User specified they didn't finish this episode
+                        show_data.mark_watched(current_ep, completed=False)
+                        self.cfg.save()
+                        print(f"{Colors.YELLOW}↺ Kept {current_ep.code} as current (will reopen here next time).{Colors.RESET}")
+                        break
+                    else:  # QUIT / STOP
+                        print(f"{Colors.CYAN}Auto-play stopped. {current_ep.code} remains marked as watched.{Colors.RESET}")
+                        break
+                else:
+                    print(f"\n{Colors.BRIGHT_GREEN}🎉 Series Complete! All {len(episodes)} episodes have been watched.{Colors.RESET}")
+                    break
+            else:
+                # Manual post-watch prompt
+                action = prompt_post_watch(current_ep, next_in_line)
+                if action == PostWatchAction.MARK_WATCHED_AND_ADVANCE:
+                    # Already marked as completed=True above
+                    break
+                elif action == PostWatchAction.PLAY_NEXT:
+                    current_ep = next_in_line
+                elif action == PostWatchAction.KEEP_CURRENT:
+                    show_data.mark_watched(current_ep, completed=False)
+                    self.cfg.save()
+                    print(f"{Colors.YELLOW}↺ Kept {current_ep.code} as current (will reopen here next time).{Colors.RESET}")
+                    break
+                elif action == PostWatchAction.QUIT:
+                    break
 
     def action_skip_next(self, show_data: ShowData, episodes: List[Episode]):
         """Advances pointer to next episode without launching player."""
@@ -586,17 +607,20 @@ class TerminalUI:
             sub_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.english_subtitles else f"{Colors.RED}OFF{Colors.RESET}"
             aud_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.english_audio else f"{Colors.RED}OFF{Colors.RESET}"
             pe_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.play_and_exit else f"{Colors.RED}OFF{Colors.RESET}"
+            ap_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.auto_play_next else f"{Colors.RED}OFF{Colors.RESET}"
 
             print(f"  [1] Minimized View Mode (--qt-minimal-view): {mv_status}")
             print(f"  [2] Fullscreen Mode: {fs_status}")
             print(f"  [3] Auto English Subtitles: {sub_status}")
             print(f"  [4] Auto English Audio: {aud_status}")
             print(f"  [5] Auto-Exit on Finish (--play-and-exit): {pe_status}")
-            print(f"  [6] VLC Command: {Colors.BOLD}{s.vlc_command}{Colors.RESET}")
-            print(f"  [7] Extra VLC Arguments: {s.extra_vlc_args or 'None'}")
+            print(f"  [6] Auto-Play Next Episode: {ap_status}")
+            print(f"  [7] Auto-Play Countdown Delay: {s.auto_play_delay}s")
+            print(f"  [8] VLC Command: {Colors.BOLD}{s.vlc_command}{Colors.RESET}")
+            print(f"  [9] Extra VLC Arguments: {s.extra_vlc_args or 'None'}")
             print(f"  [{Colors.RED}b{Colors.RESET}] Back to Main Menu")
 
-            c = input("\nToggle setting [1-7] or 'b': ").strip().lower()
+            c = input("\nToggle setting [1-9] or 'b': ").strip().lower()
             if c == "b" or not c:
                 break
             elif c == "1":
@@ -615,11 +639,22 @@ class TerminalUI:
                 s.play_and_exit = not s.play_and_exit
                 self.cfg.save()
             elif c == "6":
+                s.auto_play_next = not s.auto_play_next
+                self.cfg.save()
+            elif c == "7":
+                try:
+                    new_delay = input(f"Enter countdown delay in seconds (0 for immediate) [{s.auto_play_delay}]: ").strip()
+                    if new_delay:
+                        s.auto_play_delay = max(0, int(new_delay))
+                        self.cfg.save()
+                except ValueError:
+                    print(f"{Colors.RED}Invalid number.{Colors.RESET}")
+            elif c == "8":
                 new_cmd = input(f"Enter VLC executable path/command [{s.vlc_command}]: ").strip()
                 if new_cmd:
                     s.vlc_command = new_cmd
                     self.cfg.save()
-            elif c == "7":
+            elif c == "9":
                 print("Enter space-separated VLC arguments (e.g. '--sub-text-scale 120'):")
                 args_str = input("Args: ").strip()
                 s.extra_vlc_args = args_str.split() if args_str else []

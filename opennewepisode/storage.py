@@ -144,6 +144,8 @@ class PlayerSettings:
     english_subtitles: bool = True
     english_audio: bool = True
     play_and_exit: bool = True
+    auto_play_next: bool = True
+    auto_play_delay: int = 5
     extra_vlc_args: List[str] = field(default_factory=list)
 
 
@@ -174,10 +176,13 @@ class ConfigManager:
             # Load settings with migration support for new defaults
             s_data = data.get("settings", {})
             has_minimal_view = "minimal_view" in s_data
+            has_auto_play = "auto_play_next" in s_data
             minimal_view = s_data.get("minimal_view", True)
             fullscreen = s_data.get("fullscreen", True)
             english_subtitles = s_data.get("english_subtitles", True)
             english_audio = s_data.get("english_audio", True)
+            auto_play_next = s_data.get("auto_play_next", True)
+            auto_play_delay = s_data.get("auto_play_delay", 5)
 
             self.settings = PlayerSettings(
                 vlc_command=s_data.get("vlc_command", "vlc"),
@@ -186,6 +191,8 @@ class ConfigManager:
                 english_subtitles=english_subtitles,
                 english_audio=english_audio,
                 play_and_exit=s_data.get("play_and_exit", True),
+                auto_play_next=auto_play_next,
+                auto_play_delay=auto_play_delay,
                 extra_vlc_args=s_data.get("extra_vlc_args", []),
             )
 
@@ -216,7 +223,7 @@ class ConfigManager:
                 else:
                     self.active_show_name = None
 
-            if not has_minimal_view:
+            if not has_minimal_view or not has_auto_play:
                 self.save()
 
         except Exception:
