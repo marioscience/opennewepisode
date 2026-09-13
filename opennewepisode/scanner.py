@@ -9,7 +9,8 @@ from typing import List, Optional, Tuple
 
 VIDEO_EXTENSIONS = {
     ".mkv", ".mp4", ".avi", ".mov", ".wmv",
-    ".m4v", ".webm", ".ts", ".flv", ".mpg", ".mpeg"
+    ".m4v", ".webm", ".ts", ".m2ts", ".flv",
+    ".mpg", ".mpeg", ".vob", ".ogv"
 }
 
 IGNORE_PATTERNS = [

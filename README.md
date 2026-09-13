@@ -21,10 +21,11 @@ Designed to be **generic for any TV series**, with automatic episode detection, 
 - **Smart Completion Detection**:
   - If you watch past the completion threshold (default: 90%), the episode is automatically marked complete and clears resume points.
 - **Multi-Show Support**: Manage multiple TV series simultaneously; switch between shows with one command.
-- **Smart Episode Scanner**:
+- **Smart Episode Scanner & Format Support**:
   - Automatically sorts episodes across seasons (`S01E01`, `1x01`, `Season 1/01`, scene releases, etc.).
   - Extracts clean human-readable episode titles.
   - Filters out sample/trailer files.
+  - **Supported Formats**: `.mkv`, `.mp4`, `.avi`, `.mov`, `.wmv`, `.m4v`, `.webm`, `.ts`, `.m2ts`, `.flv`, `.mpg`, `.mpeg`, `.vob`, `.ogv`.
 - **VLC Integration**:
   - Launches VLC with optional `--fullscreen` and `--play-and-exit`.
   - Suppresses noisy player terminal logs.
@@ -42,6 +43,8 @@ OpenNewEpisode has **zero external Python dependencies** (pure standard library)
 - **Python 3.8+**
 - **VLC Media Player** (`sudo apt install vlc` or `snap install vlc`)
 - **Zenity** *(optional, for native pop-up dialogs on GUI double-clicks; pre-installed on GNOME/Ubuntu, or `sudo apt install zenity`)*
+
+> **Supported Video Formats**: `.mkv`, `.mp4`, `.avi`, `.mov`, `.wmv`, `.m4v`, `.webm`, `.ts`, `.m2ts`, `.flv`, `.mpg`, `.mpeg`, `.vob`, `.ogv`
 
 ### 2. Installation
 Clone the repository and run the installer:
