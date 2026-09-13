@@ -7,7 +7,13 @@ from pathlib import Path
 
 from opennewepisode.scanner import Episode
 from opennewepisode.storage import PlayerSettings
-from opennewepisode.player import build_vlc_command, detect_external_subtitles, countdown_prompt, PostWatchAction
+from opennewepisode.player import (
+    build_vlc_command,
+    detect_external_subtitles,
+    countdown_prompt,
+    format_seconds,
+    PostWatchAction,
+)
 
 
 class TestPlayer(unittest.TestCase):
@@ -79,6 +85,32 @@ class TestPlayer(unittest.TestCase):
         )
         action = countdown_prompt(next_ep, delay=0)
         self.assertEqual(action, PostWatchAction.PLAY_NEXT)
+
+    def test_build_vlc_command_start_time(self):
+        settings = PlayerSettings()
+        # With positive start time
+        cmd = build_vlc_command(self.ep, settings, start_time=125)
+        self.assertIn("--start-time=125", cmd)
+
+        # With None or 0 start time, flag should not be added
+        cmd_zero = build_vlc_command(self.ep, settings, start_time=0)
+        self.assertNotIn("--start-time=0", cmd_zero)
+        cmd_none = build_vlc_command(self.ep, settings, start_time=None)
+        self.assertFalse(any(arg.startswith("--start-time=") for arg in cmd_none))
+
+    def test_format_seconds(self):
+        self.assertEqual(format_seconds(0), "00:00")
+        self.assertEqual(format_seconds(59), "00:59")
+        self.assertEqual(format_seconds(60), "01:00")
+        self.assertEqual(format_seconds(75), "01:15")
+        self.assertEqual(format_seconds(3600), "1:00:00")
+        self.assertEqual(format_seconds(3665), "1:01:05")
+        self.assertEqual(format_seconds(-10), "00:00")
+
+    def test_progress_tracking_settings_defaults(self):
+        settings = PlayerSettings()
+        self.assertTrue(settings.track_playback_progress)
+        self.assertEqual(settings.completion_threshold, 0.90)
 
 
 if __name__ == "__main__":

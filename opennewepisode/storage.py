@@ -24,6 +24,8 @@ class LastWatched:
     title: str = ""
     completed: bool = False
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    resume_seconds: int = 0
+    duration_seconds: int = 0
 
 
 @dataclass
@@ -77,8 +79,14 @@ class ShowData:
                     return ep
             return None
 
-    def mark_watched(self, episode: Episode, completed: bool = True) -> None:
-        """Updates last watched status and marks completed if specified."""
+    def mark_watched(
+        self,
+        episode: Episode,
+        completed: bool = True,
+        resume_seconds: int = 0,
+        duration_seconds: int = 0,
+    ) -> None:
+        """Updates last watched status, marks completed if specified, and tracks resume position."""
         self.last_watched = LastWatched(
             relative_path=episode.relative_path,
             season=episode.season,
@@ -86,6 +94,8 @@ class ShowData:
             title=episode.title,
             completed=completed,
             timestamp=datetime.now().isoformat(),
+            resume_seconds=0 if completed else resume_seconds,
+            duration_seconds=duration_seconds,
         )
         if completed and episode.relative_path not in self.watched_rel_paths:
             self.watched_rel_paths.append(episode.relative_path)
@@ -146,6 +156,8 @@ class PlayerSettings:
     play_and_exit: bool = True
     auto_play_next: bool = True
     auto_play_delay: int = 5
+    track_playback_progress: bool = True
+    completion_threshold: float = 0.90
     extra_vlc_args: List[str] = field(default_factory=list)
 
 
@@ -177,12 +189,15 @@ class ConfigManager:
             s_data = data.get("settings", {})
             has_minimal_view = "minimal_view" in s_data
             has_auto_play = "auto_play_next" in s_data
+            has_track_progress = "track_playback_progress" in s_data
             minimal_view = s_data.get("minimal_view", True)
             fullscreen = s_data.get("fullscreen", True)
             english_subtitles = s_data.get("english_subtitles", True)
             english_audio = s_data.get("english_audio", True)
             auto_play_next = s_data.get("auto_play_next", True)
             auto_play_delay = s_data.get("auto_play_delay", 5)
+            track_playback_progress = s_data.get("track_playback_progress", True)
+            completion_threshold = float(s_data.get("completion_threshold", 0.90))
 
             self.settings = PlayerSettings(
                 vlc_command=s_data.get("vlc_command", "vlc"),
@@ -193,6 +208,8 @@ class ConfigManager:
                 play_and_exit=s_data.get("play_and_exit", True),
                 auto_play_next=auto_play_next,
                 auto_play_delay=auto_play_delay,
+                track_playback_progress=track_playback_progress,
+                completion_threshold=completion_threshold,
                 extra_vlc_args=s_data.get("extra_vlc_args", []),
             )
 
@@ -209,6 +226,8 @@ class ConfigManager:
                         title=lw_info.get("title", ""),
                         completed=lw_info.get("completed", False),
                         timestamp=lw_info.get("timestamp", datetime.now().isoformat()),
+                        resume_seconds=lw_info.get("resume_seconds", 0),
+                        duration_seconds=lw_info.get("duration_seconds", 0),
                     )
                 self.shows[name] = ShowData(
                     path=s_info.get("path", ""),
@@ -223,7 +242,7 @@ class ConfigManager:
                 else:
                     self.active_show_name = None
 
-            if not has_minimal_view or not has_auto_play:
+            if not has_minimal_view or not has_auto_play or not has_track_progress:
                 self.save()
 
         except Exception:

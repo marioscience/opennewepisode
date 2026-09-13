@@ -6,9 +6,11 @@ import select
 import shutil
 import subprocess
 import sys
+import threading
+import time
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from opennewepisode.scanner import Episode
 from opennewepisode.storage import PlayerSettings
@@ -127,10 +129,81 @@ def probe_media_info(video_path: Path) -> Dict[str, Any]:
     return info
 
 
+def format_seconds(seconds: int) -> str:
+    """Formats integer seconds into human-readable MM:SS or HH:MM:SS."""
+    if seconds < 0:
+        seconds = 0
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+
+class PlaybackTracker:
+    """
+    Monitors VLC playback position and duration in a background thread
+    via Linux MPRIS2 D-Bus (org.mpris.MediaPlayer2.vlc.instance<PID>).
+    """
+
+    def __init__(self, pid: int, poll_interval: float = 0.8):
+        self.pid = pid
+        self.poll_interval = poll_interval
+        self.last_position = 0.0
+        self.duration = 0.0
+        self.is_running = True
+        self._thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._thread.start()
+
+    def _poll_loop(self):
+        try:
+            import dbus
+        except ImportError:
+            return
+
+        target_service = f"org.mpris.MediaPlayer2.vlc.instance{self.pid}"
+        while self.is_running:
+            try:
+                bus = dbus.SessionBus()
+                services = bus.list_names()
+                service_to_use = None
+                if target_service in services:
+                    service_to_use = target_service
+                elif "org.mpris.MediaPlayer2.vlc" in services:
+                    service_to_use = "org.mpris.MediaPlayer2.vlc"
+
+                if service_to_use:
+                    player = bus.get_object(service_to_use, "/org/mpris/MediaPlayer2")
+                    props = dbus.Interface(player, "org.freedesktop.DBus.Properties")
+
+                    pos_raw = props.Get("org.mpris.MediaPlayer2.Player", "Position")
+                    if pos_raw is not None:
+                        pos_sec = float(pos_raw) / 1_000_000.0
+                        if pos_sec > 0:
+                            self.last_position = pos_sec
+
+                    meta = props.Get("org.mpris.MediaPlayer2.Player", "Metadata")
+                    if meta:
+                        len_raw = meta.get("mpris:length", 0)
+                        if len_raw and int(len_raw) > 0:
+                            self.duration = float(len_raw) / 1_000_000.0
+            except Exception:
+                pass
+
+            time.sleep(self.poll_interval)
+
+    def stop(self) -> Tuple[int, int]:
+        """Stops tracking thread and returns (last_position_seconds, duration_seconds)."""
+        self.is_running = False
+        return int(round(self.last_position)), int(round(self.duration))
+
+
 def build_vlc_command(
     episode: Episode,
     settings: PlayerSettings,
     extra_args: Optional[List[str]] = None,
+    start_time: Optional[int] = None,
 ) -> List[str]:
     """
     Constructs the list of command-line arguments for VLC.
@@ -159,6 +232,10 @@ def build_vlc_command(
         if ext_sub:
             cmd.append(f"--sub-file={ext_sub}")
 
+    # Start time for resume
+    if start_time and start_time > 0:
+        cmd.append(f"--start-time={int(start_time)}")
+
     # Play and Exit
     if settings.play_and_exit:
         cmd.append("--play-and-exit")
@@ -178,11 +255,12 @@ def launch_vlc(
     episode: Episode,
     settings: PlayerSettings,
     extra_args: Optional[List[str]] = None,
-) -> int:
+    start_time: Optional[int] = None,
+) -> Tuple[int, int, int]:
     """
     Launches VLC to play the specified episode.
     Blocks until VLC closes.
-    Returns the exit code.
+    Returns (exit_code, last_position_seconds, duration_seconds).
     """
     vlc_bin = resolve_vlc_binary(settings.vlc_command)
     if not vlc_bin:
@@ -191,19 +269,25 @@ def launch_vlc(
             "Please ensure VLC is installed."
         )
 
-    cmd = build_vlc_command(episode, settings, extra_args)
+    cmd = build_vlc_command(episode, settings, extra_args, start_time=start_time)
 
+    tracker = None
     try:
         # Run VLC with suppressed stdout/stderr to keep the terminal pristine
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        return proc.returncode
+        if settings.track_playback_progress:
+            tracker = PlaybackTracker(proc.pid)
+
+        returncode = proc.wait()
+        last_pos, duration = tracker.stop() if tracker else (0, 0)
+        return returncode, last_pos, duration
     except KeyboardInterrupt:
-        # User pressed Ctrl+C in terminal
-        return -1
+        last_pos, duration = tracker.stop() if tracker else (0, 0)
+        return -1, last_pos, duration
 
 
 def prompt_post_watch(episode: Episode, next_ep: Optional[Episode]) -> PostWatchAction:

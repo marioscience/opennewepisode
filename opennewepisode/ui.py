@@ -9,7 +9,13 @@ from typing import Dict, List, Optional, Tuple
 
 from opennewepisode.scanner import Episode, scan_episodes
 from opennewepisode.storage import ConfigManager, ShowData
-from opennewepisode.player import PostWatchAction, countdown_prompt, launch_vlc, prompt_post_watch
+from opennewepisode.player import (
+    PostWatchAction,
+    countdown_prompt,
+    format_seconds,
+    launch_vlc,
+    prompt_post_watch,
+)
 
 
 class Colors:
@@ -145,9 +151,14 @@ class TerminalUI:
                 choice = default_action
 
             if choice == "1" and next_ep:
-                self.play_episode(show_name, show_data, episodes, next_ep)
-            elif choice == "2" and last_ep:
-                self.play_episode(show_name, show_data, episodes, last_ep)
+                self.play_episode(show_name, show_data, episodes, next_ep, from_start=False)
+            elif choice == "2":
+                lw = show_data.last_watched
+                has_resume = bool(next_ep and lw and not lw.completed and lw.relative_path == next_ep.relative_path and lw.resume_seconds > 0)
+                if has_resume:
+                    self.play_episode(show_name, show_data, episodes, next_ep, from_start=True)
+                elif last_ep:
+                    self.play_episode(show_name, show_data, episodes, last_ep, from_start=False)
             elif choice == "3":
                 self.action_skip_next(show_data, episodes)
             elif choice == "4":
@@ -191,14 +202,22 @@ class TerminalUI:
         progress_bar = render_progress_bar(watched_count, total_count)
         print(f" {Colors.BOLD}Progress:{Colors.RESET}     {Colors.CYAN}{progress_bar}{Colors.RESET}")
 
+        lw = show_data.last_watched
         if last_ep:
-            status_text = "Watched" if (show_data.last_watched and show_data.last_watched.completed) else f"{Colors.YELLOW}Paused / In progress{Colors.RESET}"
+            if lw and not lw.completed and lw.resume_seconds > 0:
+                status_text = f"{Colors.YELLOW}Stopped at {format_seconds(lw.resume_seconds)}{Colors.RESET}"
+            elif lw and lw.completed:
+                status_text = "Watched"
+            else:
+                status_text = f"{Colors.YELLOW}In progress{Colors.RESET}"
             print(f" {Colors.BOLD}Last Played:{Colors.RESET}  {last_ep.display_name} ({status_text})")
         else:
             print(f" {Colors.BOLD}Last Played:{Colors.RESET}  {Colors.DIM}None (Ready to start series!){Colors.RESET}")
 
+        has_resume = bool(next_ep and lw and not lw.completed and lw.relative_path == next_ep.relative_path and lw.resume_seconds > 0)
         if next_ep:
-            print(f" {Colors.BOLD}Up Next:{Colors.RESET}      {Colors.BRIGHT_YELLOW}{next_ep.display_name}{Colors.RESET}")
+            resume_tag = f" {Colors.BRIGHT_YELLOW}(Resume at {format_seconds(lw.resume_seconds)}){Colors.RESET}" if has_resume else ""
+            print(f" {Colors.BOLD}Up Next:{Colors.RESET}      {Colors.BRIGHT_YELLOW}{next_ep.display_name}{Colors.RESET}{resume_tag}")
         else:
             print(f" {Colors.BOLD}Up Next:{Colors.RESET}      {Colors.BRIGHT_GREEN}🎉 Series Complete! All episodes watched.{Colors.RESET}")
 
@@ -206,14 +225,21 @@ class TerminalUI:
 
         # Action options
         if next_ep:
-            print(f"  {Colors.BRIGHT_GREEN}[1]{Colors.RESET} ▶  Play Up Next ({Colors.BOLD}{next_ep.code}{Colors.RESET})")
+            if has_resume:
+                print(f"  {Colors.BRIGHT_GREEN}[1]{Colors.RESET} ▶  Resume Up Next ({Colors.BOLD}{next_ep.code} at {format_seconds(lw.resume_seconds)}{Colors.RESET})")
+                print(f"  {Colors.BRIGHT_YELLOW}[2]{Colors.RESET} ↺  Restart from Beginning ({Colors.BOLD}{next_ep.code} from 0:00{Colors.RESET})")
+            else:
+                print(f"  {Colors.BRIGHT_GREEN}[1]{Colors.RESET} ▶  Play Up Next ({Colors.BOLD}{next_ep.code}{Colors.RESET})")
+                if last_ep:
+                    print(f"  {Colors.BRIGHT_YELLOW}[2]{Colors.RESET} ↺  Replay / Resume Last ({Colors.BOLD}{last_ep.code}{Colors.RESET})")
+                else:
+                    print(f"  {Colors.DIM}[2] ↺  Replay / Resume Last (None){Colors.RESET}")
         else:
             print(f"  {Colors.DIM}[1] ▶  Play Up Next (Series complete){Colors.RESET}")
-
-        if last_ep:
-            print(f"  {Colors.BRIGHT_YELLOW}[2]{Colors.RESET} ↺  Replay / Resume Last ({Colors.BOLD}{last_ep.code}{Colors.RESET})")
-        else:
-            print(f"  {Colors.DIM}[2] ↺  Replay / Resume Last (None){Colors.RESET}")
+            if last_ep:
+                print(f"  {Colors.BRIGHT_YELLOW}[2]{Colors.RESET} ↺  Replay Last ({Colors.BOLD}{last_ep.code}{Colors.RESET})")
+            else:
+                print(f"  {Colors.DIM}[2] ↺  Replay Last (None){Colors.RESET}")
 
         print(f"  {Colors.CYAN}[3]{Colors.RESET} ⏩ Advance Next without playing")
         print(f"  {Colors.CYAN}[4]{Colors.RESET} ⏮  Step back to Previous episode")
@@ -230,9 +256,11 @@ class TerminalUI:
         show_data: ShowData,
         episodes: List[Episode],
         episode: Episode,
+        from_start: bool = False,
     ):
         """Launches playback and handles post-watch state transitions."""
         current_ep = episode
+        is_first_episode = True
         while current_ep:
             # Find next episode relative to current
             try:
@@ -240,6 +268,14 @@ class TerminalUI:
                 next_in_line = episodes[curr_idx + 1] if curr_idx + 1 < len(episodes) else None
             except ValueError:
                 next_in_line = None
+
+            # Determine start_time for resuming
+            start_time = None
+            if is_first_episode and not from_start:
+                lw = show_data.last_watched
+                if lw and lw.relative_path == current_ep.relative_path and lw.resume_seconds > 0:
+                    start_time = lw.resume_seconds
+            is_first_episode = False
 
             print(f"\n{Colors.BRIGHT_GREEN}=================================================={Colors.RESET}")
             print(f"▶ {Colors.BOLD}Opening VLC for:{Colors.RESET} {Colors.BRIGHT_CYAN}{show_name}{Colors.RESET}")
@@ -256,27 +292,60 @@ class TerminalUI:
                 mode_str = "Minimized Window (--qt-minimal-view)"
             else:
                 mode_str = "Standard Window"
-            print(f"  {Colors.BOLD}View Mode:{Colors.RESET}  {mode_str}")
+            print(f"  {Colors.BOLD}View Mode:{Colors.RESET}   {mode_str}")
             if s.english_audio:
-                print(f"  {Colors.BOLD}Audio:{Colors.RESET}      English (first found)")
+                print(f"  {Colors.BOLD}Audio:{Colors.RESET}       English (first found)")
             if s.english_subtitles:
-                print(f"  {Colors.BOLD}Subtitles:{Colors.RESET}  English (first found)")
+                print(f"  {Colors.BOLD}Subtitles:{Colors.RESET}   English (first found)")
+            if start_time and start_time > 0:
+                print(f"  {Colors.BOLD}Resume Time:{Colors.RESET} {Colors.BRIGHT_YELLOW}Resuming at {format_seconds(start_time)}{Colors.RESET}")
+            if s.track_playback_progress:
+                print(f"  {Colors.BOLD}Progress:{Colors.RESET}    Auto-tracking via D-Bus (threshold: {int(s.completion_threshold * 100)}%)")
             if s.auto_play_next:
-                print(f"  {Colors.BOLD}Auto-Play:{Colors.RESET}  Next Episode (countdown: {s.auto_play_delay}s)")
+                print(f"  {Colors.BOLD}Auto-Play:{Colors.RESET}   Next Episode (countdown: {s.auto_play_delay}s)")
             print(f"{Colors.BRIGHT_GREEN}=================================================={Colors.RESET}")
             print(f"{Colors.GRAY}(Waiting for VLC playback to finish...){Colors.RESET}")
 
-            # Record that we opened this episode (completed=False until finished)
-            show_data.mark_watched(current_ep, completed=False)
+            # Record that we opened this episode (completed=False until verified)
+            show_data.mark_watched(current_ep, completed=False, resume_seconds=start_time or 0)
             self.cfg.save()
 
             # Launch VLC
-            launch_vlc(current_ep, self.cfg.settings)
+            returncode, last_pos, duration = launch_vlc(
+                current_ep, self.cfg.settings, start_time=start_time
+            )
 
-            # Automatically mark episode as watched by default
-            show_data.mark_watched(current_ep, completed=True)
-            self.cfg.save()
-            print(f"\n{Colors.BRIGHT_GREEN}✓ Marked {current_ep.code} ({current_ep.title or 'Episode'}) as watched.{Colors.RESET}")
+            # Analyze progress and verify completion
+            is_completed = True
+            if s.track_playback_progress and duration > 0:
+                watch_ratio = last_pos / duration
+                time_str = f"{format_seconds(last_pos)} / {format_seconds(duration)} ({watch_ratio * 100:.1f}%)"
+                if watch_ratio >= s.completion_threshold:
+                    # Reached credits / completion threshold (>=90%)
+                    show_data.mark_watched(
+                        current_ep, completed=True, resume_seconds=0, duration_seconds=duration
+                    )
+                    self.cfg.save()
+                    print(f"\n{Colors.BRIGHT_GREEN}✓ Watched {time_str} — Episode complete! Marked as watched.{Colors.RESET}")
+                    is_completed = True
+                else:
+                    # User stopped before 90% threshold (left off mid-episode)
+                    show_data.mark_watched(
+                        current_ep, completed=False, resume_seconds=last_pos, duration_seconds=duration
+                    )
+                    self.cfg.save()
+                    print(f"\n{Colors.YELLOW}↺ Stopped at {time_str} — Left off mid-episode. Saved resume point at {format_seconds(last_pos)}.{Colors.RESET}")
+                    is_completed = False
+            else:
+                # Fallback when progress tracking is disabled or duration is unavailable
+                show_data.mark_watched(current_ep, completed=True)
+                self.cfg.save()
+                print(f"\n{Colors.BRIGHT_GREEN}✓ Marked {current_ep.code} ({current_ep.title or 'Episode'}) as watched.{Colors.RESET}")
+                is_completed = True
+
+            # If stopped mid-episode, stop playback loop so user can resume here next time
+            if not is_completed:
+                break
 
             if self.cfg.settings.auto_play_next:
                 if next_in_line:
@@ -289,9 +358,13 @@ class TerminalUI:
                     action = countdown_prompt(next_in_line, self.cfg.settings.auto_play_delay)
                     if action == PostWatchAction.PLAY_NEXT:
                         current_ep = next_in_line
+                        from_start = False
+                        continue
                     elif action == PostWatchAction.KEEP_CURRENT:
-                        # User specified they didn't finish this episode
-                        show_data.mark_watched(current_ep, completed=False)
+                        # User requested to keep current incomplete
+                        show_data.mark_watched(
+                            current_ep, completed=False, resume_seconds=last_pos, duration_seconds=duration
+                        )
                         self.cfg.save()
                         print(f"{Colors.YELLOW}↺ Kept {current_ep.code} as current (will reopen here next time).{Colors.RESET}")
                         break
@@ -305,12 +378,15 @@ class TerminalUI:
                 # Manual post-watch prompt
                 action = prompt_post_watch(current_ep, next_in_line)
                 if action == PostWatchAction.MARK_WATCHED_AND_ADVANCE:
-                    # Already marked as completed=True above
                     break
                 elif action == PostWatchAction.PLAY_NEXT:
                     current_ep = next_in_line
+                    from_start = False
+                    continue
                 elif action == PostWatchAction.KEEP_CURRENT:
-                    show_data.mark_watched(current_ep, completed=False)
+                    show_data.mark_watched(
+                        current_ep, completed=False, resume_seconds=last_pos, duration_seconds=duration
+                    )
                     self.cfg.save()
                     print(f"{Colors.YELLOW}↺ Kept {current_ep.code} as current (will reopen here next time).{Colors.RESET}")
                     break
@@ -423,7 +499,12 @@ class TerminalUI:
                     print(f"  [b] Cancel")
                     sub = input("Choice [1]: ").strip().lower()
                     if sub in ("", "1"):
-                        self.play_episode(show_name, show_data, all_episodes, target)
+                        lw = show_data.last_watched
+                        from_start = False
+                        if lw and lw.relative_path == target.relative_path and lw.resume_seconds > 0 and not lw.completed:
+                            res_choice = input(f"Episode was stopped at {format_seconds(lw.resume_seconds)}. Resume from there? [Y/n]: ").strip().lower()
+                            from_start = res_choice in ("n", "no")
+                        self.play_episode(show_name, show_data, all_episodes, target, from_start=from_start)
                     elif sub == "2":
                         target_idx = all_episodes.index(target)
                         if target_idx > 0:
@@ -608,6 +689,7 @@ class TerminalUI:
             aud_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.english_audio else f"{Colors.RED}OFF{Colors.RESET}"
             pe_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.play_and_exit else f"{Colors.RED}OFF{Colors.RESET}"
             ap_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.auto_play_next else f"{Colors.RED}OFF{Colors.RESET}"
+            tp_status = f"{Colors.BRIGHT_GREEN}ON{Colors.RESET}" if s.track_playback_progress else f"{Colors.RED}OFF{Colors.RESET}"
 
             print(f"  [1] Minimized View Mode (--qt-minimal-view): {mv_status}")
             print(f"  [2] Fullscreen Mode: {fs_status}")
@@ -616,11 +698,13 @@ class TerminalUI:
             print(f"  [5] Auto-Exit on Finish (--play-and-exit): {pe_status}")
             print(f"  [6] Auto-Play Next Episode: {ap_status}")
             print(f"  [7] Auto-Play Countdown Delay: {s.auto_play_delay}s")
-            print(f"  [8] VLC Command: {Colors.BOLD}{s.vlc_command}{Colors.RESET}")
-            print(f"  [9] Extra VLC Arguments: {s.extra_vlc_args or 'None'}")
+            print(f"  [8] Track Playback Progress via D-Bus: {tp_status}")
+            print(f"  [9] Completion Threshold: {int(s.completion_threshold * 100)}%")
+            print(f"  [10] VLC Command: {Colors.BOLD}{s.vlc_command}{Colors.RESET}")
+            print(f"  [11] Extra VLC Arguments: {s.extra_vlc_args or 'None'}")
             print(f"  [{Colors.RED}b{Colors.RESET}] Back to Main Menu")
 
-            c = input("\nToggle setting [1-9] or 'b': ").strip().lower()
+            c = input("\nToggle setting [1-11] or 'b': ").strip().lower()
             if c == "b" or not c:
                 break
             elif c == "1":
@@ -650,11 +734,26 @@ class TerminalUI:
                 except ValueError:
                     print(f"{Colors.RED}Invalid number.{Colors.RESET}")
             elif c == "8":
+                s.track_playback_progress = not s.track_playback_progress
+                self.cfg.save()
+            elif c == "9":
+                try:
+                    new_th = input(f"Enter completion percentage threshold (50-99) [{int(s.completion_threshold * 100)}]: ").strip()
+                    if new_th:
+                        val = int(new_th)
+                        if 50 <= val <= 99:
+                            s.completion_threshold = val / 100.0
+                            self.cfg.save()
+                        else:
+                            print(f"{Colors.RED}Threshold must be between 50 and 99.{Colors.RESET}")
+                except ValueError:
+                    print(f"{Colors.RED}Invalid number.{Colors.RESET}")
+            elif c == "10":
                 new_cmd = input(f"Enter VLC executable path/command [{s.vlc_command}]: ").strip()
                 if new_cmd:
                     s.vlc_command = new_cmd
                     self.cfg.save()
-            elif c == "9":
+            elif c == "11":
                 print("Enter space-separated VLC arguments (e.g. '--sub-text-scale 120'):")
                 args_str = input("Args: ").strip()
                 s.extra_vlc_args = args_str.split() if args_str else []

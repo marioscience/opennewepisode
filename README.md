@@ -8,8 +8,12 @@ Designed to be **generic for any TV series**, with automatic episode detection, 
 
 ## 🚀 Features
 
-- **Progress Memory**: Tracks exactly which episode you watched, whether it was finished, and automatically queues the next one.
-- **Resume Capability**: If you close an episode mid-way, it can reopen that same episode to continue from where you stopped (using VLC's native playback position resume).
+- **Progress Memory & Smart Resume**:
+  - Automatically polls VLC playback progress via Linux MPRIS2 D-Bus during playback and verifies position upon exit.
+  - If you close an episode mid-way (< 90% watched), remembers your exact timestamp (e.g. `Resume at 24:15`) and resumes automatically at that point with VLC's native `--start-time`.
+  - Restart from the beginning anytime via `--from-start` / `--restart` or from the interactive dashboard.
+- **Smart Completion Detection**:
+  - If you watch past the completion threshold (default: 90%), the episode is automatically marked complete and clears resume points.
 - **Multi-Show Support**: Manage multiple TV series simultaneously; switch between shows with one command.
 - **Smart Episode Scanner**:
   - Automatically sorts episodes across seasons (`S01E01`, `1x01`, `Season 1/01`, scene releases, etc.).
@@ -84,8 +88,10 @@ For quick execution without entering the menu:
 
 | Command | Description |
 |---|---|
-| `onep play` (or `onep p`) | Immediately plays the Up Next episode |
+| `onep play` (or `onep p`) | Immediately plays the Up Next episode (resumes if paused) |
+| `onep play --from-start` | Plays Up Next from 0:00, ignoring any saved resume timestamp |
 | `onep resume` (or `onep r`) | Reopens / resumes the last watched episode |
+| `onep resume --from-start` | Reopens the last watched episode from the beginning (0:00) |
 | `onep list` (or `onep ls`) | Displays all tracked shows and progress |
 | `onep episodes [show]` | Lists all seasons & episodes with `[✓]` watched status |
 | `onep add <folder>` | Adds a new show folder to track |
@@ -110,6 +116,8 @@ Settings customizable through the menu (Option 8) or in `config.json`:
 - `play_and_exit`: Closes VLC automatically when episode finishes (`--play-and-exit`, default: `true`).
 - `auto_play_next`: Automatically plays the next episode upon completion across seasons (default: `true`).
 - `auto_play_delay`: Countdown seconds before auto-playing next episode (default: `5`, set to `0` for immediate).
+- `track_playback_progress`: Automatically poll VLC progress via MPRIS2 D-Bus to save resume points (default: `true`).
+- `completion_threshold`: Percentage of duration watched to count episode as completed (default: `0.90` / 90%).
 - `vlc_command`: VLC binary path (default: `vlc`).
 - `extra_vlc_args`: Custom flags passed to VLC (e.g. `--sub-text-scale 120`).
 

@@ -19,6 +19,7 @@ def cmd_play_next(
     resume_last: bool = False,
     show_name: Optional[str] = None,
     auto_play: Optional[bool] = None,
+    from_start: bool = False,
 ):
     """Plays either next or last episode directly."""
     if auto_play is not None:
@@ -51,7 +52,7 @@ def cmd_play_next(
             print(f"{Colors.BRIGHT_GREEN}Series Complete! All {len(episodes)} episodes have been watched.{Colors.RESET}")
             return
 
-    ui.play_episode(name, show_data, episodes, ep)
+    ui.play_episode(name, show_data, episodes, ep, from_start=from_start)
 
 
 def cmd_list_shows(cfg: ConfigManager, ui: TerminalUI):
@@ -175,12 +176,14 @@ def main(argv: Optional[List[str]] = None):
     p_play.add_argument("--show", "-s", help="Show name (optional)")
     p_play.add_argument("--auto-play", action="store_true", default=None, help="Force auto-play next episode on")
     p_play.add_argument("--no-auto-play", action="store_true", default=None, help="Disable auto-play next episode")
+    p_play.add_argument("--from-start", "--restart", action="store_true", help="Start playback from 0:00 instead of resuming")
 
     # resume
     p_res = subparsers.add_parser("resume", aliases=["r"], help="Reopen/resume the last watched episode")
     p_res.add_argument("--show", "-s", help="Show name (optional)")
     p_res.add_argument("--auto-play", action="store_true", default=None, help="Force auto-play next episode on")
     p_res.add_argument("--no-auto-play", action="store_true", default=None, help="Disable auto-play next episode")
+    p_res.add_argument("--from-start", "--restart", action="store_true", help="Start playback from 0:00 instead of resuming")
 
     # list
     subparsers.add_parser("list", aliases=["ls"], help="List all tracked shows and watch progress")
@@ -221,10 +224,24 @@ def main(argv: Optional[List[str]] = None):
     elif getattr(args, "auto_play", False):
         auto_play = True
 
+    from_start = getattr(args, "from_start", False)
+
     if args.command in ("play", "p"):
-        cmd_play_next(ui, resume_last=False, show_name=getattr(args, "show", None), auto_play=auto_play)
+        cmd_play_next(
+            ui,
+            resume_last=False,
+            show_name=getattr(args, "show", None),
+            auto_play=auto_play,
+            from_start=from_start,
+        )
     elif args.command in ("resume", "r"):
-        cmd_play_next(ui, resume_last=True, show_name=getattr(args, "show", None), auto_play=auto_play)
+        cmd_play_next(
+            ui,
+            resume_last=True,
+            show_name=getattr(args, "show", None),
+            auto_play=auto_play,
+            from_start=from_start,
+        )
     elif args.command in ("list", "ls"):
         cmd_list_shows(cfg, ui)
     elif args.command in ("episodes", "ep"):

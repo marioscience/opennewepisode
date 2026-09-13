@@ -96,6 +96,37 @@ class TestStorage(unittest.TestCase):
         self.assertEqual(next_ep.season, 2)
         self.assertEqual(next_ep.episode, 1)
 
+    def test_mark_watched_resume_progress(self):
+        show = ShowData(path="/show")
+        # Watch halfway
+        show.mark_watched(self.episodes[0], completed=False, resume_seconds=1450, duration_seconds=3000)
+        self.assertFalse(show.is_watched(self.episodes[0]))
+        self.assertEqual(show.last_watched.resume_seconds, 1450)
+        self.assertEqual(show.last_watched.duration_seconds, 3000)
+        self.assertFalse(show.last_watched.completed)
+
+        # Later completed
+        show.mark_watched(self.episodes[0], completed=True, resume_seconds=0, duration_seconds=3000)
+        self.assertTrue(show.is_watched(self.episodes[0]))
+        self.assertEqual(show.last_watched.resume_seconds, 0)
+        self.assertTrue(show.last_watched.completed)
+
+    def test_config_progress_settings_persistence(self):
+        self.cm.settings.track_playback_progress = True
+        self.cm.settings.completion_threshold = 0.85
+        self.cm.add_show(Path("/show"), "My Show")
+        show_data = self.cm.shows["My Show"]
+        show_data.mark_watched(self.episodes[0], completed=False, resume_seconds=900, duration_seconds=1800)
+        self.cm.save()
+
+        new_cm = ConfigManager(self.config_path)
+        self.assertTrue(new_cm.settings.track_playback_progress)
+        self.assertAlmostEqual(new_cm.settings.completion_threshold, 0.85)
+        loaded_show = new_cm.shows["My Show"]
+        self.assertEqual(loaded_show.last_watched.resume_seconds, 900)
+        self.assertEqual(loaded_show.last_watched.duration_seconds, 1800)
+        self.assertFalse(loaded_show.last_watched.completed)
+
 
 if __name__ == "__main__":
     unittest.main()
