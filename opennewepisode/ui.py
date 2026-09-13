@@ -16,6 +16,7 @@ from opennewepisode.player import (
     launch_vlc,
     prompt_post_watch,
 )
+from opennewepisode.dialogs import is_gui_mode, notify_desktop
 
 
 class Colors:
@@ -257,6 +258,7 @@ class TerminalUI:
         episodes: List[Episode],
         episode: Episode,
         from_start: bool = False,
+        update_last_watched: bool = True,
     ):
         """Launches playback and handles post-watch state transitions."""
         current_ep = episode
@@ -272,9 +274,9 @@ class TerminalUI:
             # Determine start_time for resuming
             start_time = None
             if is_first_episode and not from_start:
-                lw = show_data.last_watched
-                if lw and lw.relative_path == current_ep.relative_path and lw.resume_seconds > 0:
-                    start_time = lw.resume_seconds
+                saved_sec = show_data.get_resume_seconds(current_ep)
+                if saved_sec > 0:
+                    start_time = saved_sec
             is_first_episode = False
 
             print(f"\n{Colors.BRIGHT_GREEN}=================================================={Colors.RESET}")
@@ -307,7 +309,12 @@ class TerminalUI:
             print(f"{Colors.GRAY}(Waiting for VLC playback to finish...){Colors.RESET}")
 
             # Record that we opened this episode (completed=False until verified)
-            show_data.mark_watched(current_ep, completed=False, resume_seconds=start_time or 0)
+            show_data.mark_watched(
+                current_ep,
+                completed=False,
+                resume_seconds=start_time or 0,
+                update_last_watched=update_last_watched,
+            )
             self.cfg.save()
 
             # Launch VLC
@@ -323,22 +330,38 @@ class TerminalUI:
                 if watch_ratio >= s.completion_threshold:
                     # Reached credits / completion threshold (>=90%)
                     show_data.mark_watched(
-                        current_ep, completed=True, resume_seconds=0, duration_seconds=duration
+                        current_ep,
+                        completed=True,
+                        resume_seconds=0,
+                        duration_seconds=duration,
+                        update_last_watched=update_last_watched,
                     )
                     self.cfg.save()
                     print(f"\n{Colors.BRIGHT_GREEN}✓ Watched {time_str} — Episode complete! Marked as watched.{Colors.RESET}")
                     is_completed = True
+                    if is_gui_mode():
+                        notify_desktop("✓ Episode Complete", f"{current_ep.display_name} marked as watched.")
                 else:
                     # User stopped before 90% threshold (left off mid-episode)
                     show_data.mark_watched(
-                        current_ep, completed=False, resume_seconds=last_pos, duration_seconds=duration
+                        current_ep,
+                        completed=False,
+                        resume_seconds=last_pos,
+                        duration_seconds=duration,
+                        update_last_watched=update_last_watched,
                     )
                     self.cfg.save()
                     print(f"\n{Colors.YELLOW}↺ Stopped at {time_str} — Left off mid-episode. Saved resume point at {format_seconds(last_pos)}.{Colors.RESET}")
                     is_completed = False
+                    if is_gui_mode():
+                        notify_desktop("↺ Playback Paused", f"Saved resume point for {current_ep.display_name} at {format_seconds(last_pos)}.")
             else:
                 # Fallback when progress tracking is disabled or duration is unavailable
-                show_data.mark_watched(current_ep, completed=True)
+                show_data.mark_watched(
+                    current_ep,
+                    completed=True,
+                    update_last_watched=update_last_watched,
+                )
                 self.cfg.save()
                 print(f"\n{Colors.BRIGHT_GREEN}✓ Marked {current_ep.code} ({current_ep.title or 'Episode'}) as watched.{Colors.RESET}")
                 is_completed = True
@@ -355,6 +378,14 @@ class TerminalUI:
                         print(f"{Colors.BRIGHT_MAGENTA}║  🎉 Season {current_ep.season:02d} Complete! Advancing to Season {next_in_line.season:02d}!             ║{Colors.RESET}")
                         print(f"{Colors.BRIGHT_MAGENTA}╚══════════════════════════════════════════════════════════════╝{Colors.RESET}")
 
+                    if is_gui_mode():
+                        notify_desktop("▶ Auto-Playing Next Episode", f"Starting {next_in_line.display_name}...")
+                        import time
+                        time.sleep(min(self.cfg.settings.auto_play_delay, 3))
+                        current_ep = next_in_line
+                        from_start = False
+                        continue
+
                     action = countdown_prompt(next_in_line, self.cfg.settings.auto_play_delay)
                     if action == PostWatchAction.PLAY_NEXT:
                         current_ep = next_in_line
@@ -363,7 +394,11 @@ class TerminalUI:
                     elif action == PostWatchAction.KEEP_CURRENT:
                         # User requested to keep current incomplete
                         show_data.mark_watched(
-                            current_ep, completed=False, resume_seconds=last_pos, duration_seconds=duration
+                            current_ep,
+                            completed=False,
+                            resume_seconds=last_pos,
+                            duration_seconds=duration,
+                            update_last_watched=update_last_watched,
                         )
                         self.cfg.save()
                         print(f"{Colors.YELLOW}↺ Kept {current_ep.code} as current (will reopen here next time).{Colors.RESET}")
@@ -373,8 +408,12 @@ class TerminalUI:
                         break
                 else:
                     print(f"\n{Colors.BRIGHT_GREEN}🎉 Series Complete! All {len(episodes)} episodes have been watched.{Colors.RESET}")
+                    if is_gui_mode():
+                        notify_desktop("🎉 Series Complete!", f"All {len(episodes)} episodes have been watched.")
                     break
             else:
+                if is_gui_mode():
+                    break
                 # Manual post-watch prompt
                 action = prompt_post_watch(current_ep, next_in_line)
                 if action == PostWatchAction.MARK_WATCHED_AND_ADVANCE:
@@ -385,7 +424,11 @@ class TerminalUI:
                     continue
                 elif action == PostWatchAction.KEEP_CURRENT:
                     show_data.mark_watched(
-                        current_ep, completed=False, resume_seconds=last_pos, duration_seconds=duration
+                        current_ep,
+                        completed=False,
+                        resume_seconds=last_pos,
+                        duration_seconds=duration,
+                        update_last_watched=update_last_watched,
                     )
                     self.cfg.save()
                     print(f"{Colors.YELLOW}↺ Kept {current_ep.code} as current (will reopen here next time).{Colors.RESET}")
@@ -499,10 +542,10 @@ class TerminalUI:
                     print(f"  [b] Cancel")
                     sub = input("Choice [1]: ").strip().lower()
                     if sub in ("", "1"):
-                        lw = show_data.last_watched
+                        saved_sec = show_data.get_resume_seconds(target)
                         from_start = False
-                        if lw and lw.relative_path == target.relative_path and lw.resume_seconds > 0 and not lw.completed:
-                            res_choice = input(f"Episode was stopped at {format_seconds(lw.resume_seconds)}. Resume from there? [Y/n]: ").strip().lower()
+                        if saved_sec > 0:
+                            res_choice = input(f"Episode was stopped at {format_seconds(saved_sec)}. Resume from there? [Y/n]: ").strip().lower()
                             from_start = res_choice in ("n", "no")
                         self.play_episode(show_name, show_data, all_episodes, target, from_start=from_start)
                     elif sub == "2":

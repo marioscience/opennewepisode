@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=OpenNewEpisode
+GenericName=TV Show Player & Resume Tracker
+Comment=Watch TV show episodes with automatic resume, auto-play, and progress tracking
+Exec=onep open %F
+Icon=vlc
+Terminal=false
+Categories=AudioVideo;Player;Recorder;
+MimeType=video/x-matroska;video/mp4;video/avi;video/quicktime;video/x-msvideo;video/x-flv;video/webm;
+StartupNotify=false
+Keywords=video;vlc;tv;episodes;series;player;resume;

@@ -8,7 +8,12 @@ from typing import List, Optional
 
 from opennewepisode.scanner import scan_episodes
 from opennewepisode.storage import ConfigManager, ShowData
-from opennewepisode.player import launch_vlc, prompt_post_watch, PostWatchAction
+from opennewepisode.player import (
+    launch_vlc,
+    launch_vlc_direct,
+    prompt_post_watch,
+    PostWatchAction,
+)
 from opennewepisode.ui import Colors, TerminalUI, render_progress_bar
 
 __version__ = "1.0.0"
@@ -158,6 +163,126 @@ def cmd_set_episode(ui: TerminalUI, season: int, episode: int, show_name: Option
     print(f"{Colors.BRIGHT_GREEN}✓ Updated progress: marked up to {target.display_name} as watched.{Colors.RESET}")
 
 
+def cmd_open_file(
+    ui: TerminalUI,
+    file_path: str,
+    from_start: bool = False,
+    auto_play: Optional[bool] = None,
+):
+    """
+    Handles opening a video file, whether triggered from GUI file manager
+    (e.g. double click) or command line ('onep open <path>').
+    """
+    path_obj = Path(file_path).expanduser().resolve()
+    if not path_obj.exists():
+        print(f"{Colors.RED}File not found: {file_path}{Colors.RESET}")
+        sys.exit(1)
+
+    if auto_play is not None:
+        ui.cfg.settings.auto_play_next = auto_play
+
+    cfg = ui.cfg
+    # Find which show (if any) contains this file
+    matched_show_name = None
+    matched_show_data = None
+    for name, s_data in cfg.shows.items():
+        show_root = Path(s_data.path).expanduser().resolve()
+        try:
+            path_obj.relative_to(show_root)
+            matched_show_name = name
+            matched_show_data = s_data
+            break
+        except ValueError:
+            continue
+
+    # Non-show video: pass directly to VLC
+    if not matched_show_data:
+        print(f"{Colors.GRAY}File does not belong to a tracked show. Launching VLC directly...{Colors.RESET}")
+        launch_vlc_direct(path_obj, vlc_cmd=cfg.settings.vlc_command)
+        return
+
+    # Tracked show video: match episode
+    episodes = ui.get_episodes_for_show(matched_show_data)
+    show_root = Path(matched_show_data.path).expanduser().resolve()
+    rel_path_str = str(path_obj.relative_to(show_root))
+    target_ep = next((ep for ep in episodes if ep.relative_path == rel_path_str), None)
+
+    if not target_ep:
+        # File is inside show folder, but not recognized as a standard episode (e.g. extra/trailer)
+        launch_vlc_direct(path_obj, vlc_cmd=cfg.settings.vlc_command)
+        return
+
+    # Episode recognized! Check current progress and resume state
+    next_ep = matched_show_data.get_next_episode(episodes)
+    resume_sec = matched_show_data.get_resume_seconds(target_ep)
+    is_up_next = (next_ep and next_ep.relative_path == target_ep.relative_path)
+
+    update_last_watched = True
+    actual_from_start = from_start
+
+    # If opened out of order (not current Up Next), prompt user
+    if not is_up_next:
+        from opennewepisode.dialogs import prompt_out_of_order, prompt_resume_or_start
+        action = prompt_out_of_order(target_ep, next_ep, resume_seconds=resume_sec)
+        if action == "cancel":
+            return
+        elif action == "current" and next_ep:
+            # User chose to open current Up Next episode instead
+            cur_resume = matched_show_data.get_resume_seconds(next_ep)
+            if cur_resume > 0 and not actual_from_start:
+                actual_from_start = prompt_resume_or_start(next_ep, cur_resume)
+            ui.play_episode(
+                matched_show_name,
+                matched_show_data,
+                episodes,
+                next_ep,
+                from_start=actual_from_start,
+                update_last_watched=True,
+            )
+            return
+        elif action == "one_off":
+            update_last_watched = False
+        elif action == "switch":
+            update_last_watched = True
+    else:
+        # It is the current Up Next episode
+        if resume_sec > 0 and not actual_from_start:
+            actual_from_start = False
+
+    ui.play_episode(
+        matched_show_name,
+        matched_show_data,
+        episodes,
+        target_ep,
+        from_start=actual_from_start,
+        update_last_watched=update_last_watched,
+    )
+
+
+def cmd_associate():
+    """Associates OpenNewEpisode with video MIME types via xdg-mime."""
+    import shutil
+    import subprocess
+    desktop_name = "opennewepisode.desktop"
+    mime_types = [
+        "video/x-matroska",
+        "video/mp4",
+        "video/x-msvideo",
+        "video/quicktime",
+        "video/webm",
+        "video/x-flv",
+    ]
+    if not shutil.which("xdg-mime"):
+        print(f"{Colors.RED}xdg-mime not found. Please associate OpenNewEpisode in your file manager.{Colors.RESET}")
+        return
+
+    for m in mime_types:
+        subprocess.run(["xdg-mime", "default", desktop_name, m], check=False)
+    print(f"{Colors.BRIGHT_GREEN}✓ Successfully set OpenNewEpisode as default video player for desktop double-click!{Colors.RESET}")
+    print("Videos in your tracked TV shows will now automatically resume or ask what to do when double-clicked.")
+    print("Non-show videos will open directly in VLC as usual.")
+
+
 def main(argv: Optional[List[str]] = None):
     """Main CLI entrypoint."""
     cfg = ConfigManager()
@@ -211,7 +336,28 @@ def main(argv: Optional[List[str]] = None):
     p_rm = subparsers.add_parser("remove", aliases=["rm"], help="Stop tracking a show")
     p_rm.add_argument("show", help="Show name to remove")
 
-    args = parser.parse_args(argv)
+    # open
+    p_open = subparsers.add_parser("open", aliases=["o"], help="Open a video file with automatic show detection & resume")
+    p_open.add_argument("file", help="Path to video file")
+    p_open.add_argument("--from-start", "--restart", action="store_true", help="Start playback from 0:00 instead of resuming")
+    p_open.add_argument("--auto-play", action="store_true", default=None, help="Force auto-play next episode on")
+    p_open.add_argument("--no-auto-play", action="store_true", default=None, help="Disable auto-play next episode")
+
+    # associate
+    subparsers.add_parser("associate", help="Set OpenNewEpisode as default video player for desktop double-click")
+
+    raw_args = list(argv) if argv is not None else sys.argv[1:]
+    # If first argument is a video file path (and not a subcommand/flag), route directly to 'open'
+    if raw_args and not raw_args[0].startswith("-"):
+        first_arg = Path(raw_args[0]).expanduser()
+        known_cmds = {
+            "play", "p", "resume", "r", "list", "ls", "episodes", "ep",
+            "add", "switch", "set", "remove", "rm", "open", "o", "associate"
+        }
+        if raw_args[0] not in known_cmds and (first_arg.is_file() or first_arg.suffix.lower() in {".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".webm", ".ts"}):
+            raw_args = ["open"] + raw_args
+
+    args = parser.parse_args(raw_args)
 
     if not args.command:
         # Launch interactive UI loop
@@ -242,6 +388,15 @@ def main(argv: Optional[List[str]] = None):
             auto_play=auto_play,
             from_start=from_start,
         )
+    elif args.command in ("open", "o"):
+        cmd_open_file(
+            ui,
+            args.file,
+            from_start=from_start,
+            auto_play=auto_play,
+        )
+    elif args.command == "associate":
+        cmd_associate()
     elif args.command in ("list", "ls"):
         cmd_list_shows(cfg, ui)
     elif args.command in ("episodes", "ep"):

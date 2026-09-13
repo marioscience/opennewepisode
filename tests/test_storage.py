@@ -128,5 +128,52 @@ class TestStorage(unittest.TestCase):
         self.assertFalse(loaded_show.last_watched.completed)
 
 
+    def test_multi_episode_resume_positions(self):
+        show = ShowData(path="/show")
+        # Pause ep 0 at 500s
+        show.mark_watched(self.episodes[0], completed=False, resume_seconds=500, duration_seconds=2000)
+        # Pause ep 1 at 1200s
+        show.mark_watched(self.episodes[1], completed=False, resume_seconds=1200, duration_seconds=2000)
+
+        # Most recent episode should be ep 1
+        self.assertEqual(show.last_watched.episode, 2)
+        # Both episodes should retain their individual resume timestamps
+        self.assertEqual(show.get_resume_seconds(self.episodes[0]), 500)
+        self.assertEqual(show.get_resume_seconds(self.episodes[1]), 1200)
+
+        # Complete ep 0
+        show.mark_watched(self.episodes[0], completed=True, duration_seconds=2000)
+        self.assertEqual(show.get_resume_seconds(self.episodes[0]), 0)
+        # Ep 1 should still retain 1200s
+        self.assertEqual(show.get_resume_seconds(self.episodes[1]), 1200)
+
+    def test_one_off_watch_preserves_last_watched(self):
+        show = ShowData(path="/show")
+        # Complete Ep 0 as linear progress
+        show.mark_watched(self.episodes[0], completed=True)
+        self.assertEqual(show.get_next_episode(self.episodes).code, "S01E02")
+
+        # Watch Ep 2 as a one-off (stopped mid-way)
+        show.mark_watched(self.episodes[2], completed=False, resume_seconds=850, update_last_watched=False)
+        # last_watched is STILL Ep 0!
+        self.assertEqual(show.last_watched.episode, 1)
+        # Up Next is STILL Ep 1!
+        self.assertEqual(show.get_next_episode(self.episodes).code, "S01E02")
+        # But Ep 2 has its resume timestamp saved!
+        self.assertEqual(show.get_resume_seconds(self.episodes[2]), 850)
+
+    def test_resume_positions_json_roundtrip(self):
+        self.cm.add_show(Path("/show"), "My Show")
+        show = self.cm.shows["My Show"]
+        show.mark_watched(self.episodes[0], completed=False, resume_seconds=350, duration_seconds=1800)
+        show.mark_watched(self.episodes[2], completed=False, resume_seconds=950, duration_seconds=2400)
+        self.cm.save()
+
+        new_cm = ConfigManager(self.config_path)
+        loaded_show = new_cm.shows["My Show"]
+        self.assertEqual(loaded_show.get_resume_seconds(self.episodes[0]), 350)
+        self.assertEqual(loaded_show.get_resume_seconds(self.episodes[2]), 950)
+
+
 if __name__ == "__main__":
     unittest.main()

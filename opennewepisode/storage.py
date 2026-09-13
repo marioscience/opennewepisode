@@ -6,7 +6,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from opennewepisode.scanner import Episode, scan_episodes
 
@@ -33,6 +33,7 @@ class ShowData:
     path: str
     last_watched: Optional[LastWatched] = None
     watched_rel_paths: List[str] = field(default_factory=list)
+    resume_positions: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     def get_last_watched_episode(self, all_episodes: List[Episode]) -> Optional[Episode]:
         """Finds the last watched Episode instance in all_episodes."""
@@ -47,6 +48,37 @@ class ShowData:
             if ep.season == self.last_watched.season and ep.episode == self.last_watched.episode:
                 return ep
         return None
+
+    def get_resume_seconds(self, episode: Episode) -> int:
+        """Returns saved resume seconds for an episode, checking both last_watched and resume_positions."""
+        if (
+            self.last_watched
+            and self.last_watched.relative_path == episode.relative_path
+            and not self.last_watched.completed
+            and self.last_watched.resume_seconds > 0
+        ):
+            return self.last_watched.resume_seconds
+        pos = self.resume_positions.get(episode.relative_path)
+        if pos:
+            return pos.get("resume_seconds", 0)
+        return 0
+
+    def set_resume_seconds(self, episode: Episode, resume_seconds: int, duration_seconds: int = 0) -> None:
+        """Saves per-episode resume point."""
+        if resume_seconds > 0:
+            self.resume_positions[episode.relative_path] = {
+                "resume_seconds": resume_seconds,
+                "duration_seconds": duration_seconds,
+                "updated_at": datetime.now().isoformat(),
+            }
+        else:
+            self.resume_positions.pop(episode.relative_path, None)
+
+    def clear_resume_seconds(self, episode: Episode) -> None:
+        """Clears per-episode resume point."""
+        self.resume_positions.pop(episode.relative_path, None)
+        if self.last_watched and self.last_watched.relative_path == episode.relative_path:
+            self.last_watched.resume_seconds = 0
 
     def get_next_episode(self, all_episodes: List[Episode]) -> Optional[Episode]:
         """
@@ -85,20 +117,27 @@ class ShowData:
         completed: bool = True,
         resume_seconds: int = 0,
         duration_seconds: int = 0,
+        update_last_watched: bool = True,
     ) -> None:
         """Updates last watched status, marks completed if specified, and tracks resume position."""
-        self.last_watched = LastWatched(
-            relative_path=episode.relative_path,
-            season=episode.season,
-            episode=episode.episode,
-            title=episode.title,
-            completed=completed,
-            timestamp=datetime.now().isoformat(),
-            resume_seconds=0 if completed else resume_seconds,
-            duration_seconds=duration_seconds,
-        )
-        if completed and episode.relative_path not in self.watched_rel_paths:
-            self.watched_rel_paths.append(episode.relative_path)
+        if completed:
+            self.clear_resume_seconds(episode)
+            if episode.relative_path not in self.watched_rel_paths:
+                self.watched_rel_paths.append(episode.relative_path)
+        else:
+            self.set_resume_seconds(episode, resume_seconds, duration_seconds)
+
+        if update_last_watched:
+            self.last_watched = LastWatched(
+                relative_path=episode.relative_path,
+                season=episode.season,
+                episode=episode.episode,
+                title=episode.title,
+                completed=completed,
+                timestamp=datetime.now().isoformat(),
+                resume_seconds=0 if completed else resume_seconds,
+                duration_seconds=duration_seconds,
+            )
 
     def mark_unwatched(self, episode: Episode) -> None:
         """Removes episode from watched list."""
@@ -233,6 +272,7 @@ class ConfigManager:
                     path=s_info.get("path", ""),
                     last_watched=last_watched,
                     watched_rel_paths=s_info.get("watched_rel_paths", []),
+                    resume_positions=s_info.get("resume_positions", {}),
                 )
 
             # Validate active show
@@ -258,6 +298,7 @@ class ConfigManager:
                 path=str(DEFAULT_SEED_SHOW_PATH),
                 last_watched=None,
                 watched_rel_paths=[],
+                resume_positions={},
             )
             self.active_show_name = DEFAULT_SEED_SHOW_NAME
         else:
@@ -273,6 +314,7 @@ class ConfigManager:
                 "path": s_data.path,
                 "last_watched": asdict(s_data.last_watched) if s_data.last_watched else None,
                 "watched_rel_paths": s_data.watched_rel_paths,
+                "resume_positions": s_data.resume_positions,
             }
 
         payload = {

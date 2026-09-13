@@ -10,8 +10,14 @@ Designed to be **generic for any TV series**, with automatic episode detection, 
 
 - **Progress Memory & Smart Resume**:
   - Automatically polls VLC playback progress via Linux MPRIS2 D-Bus during playback and verifies position upon exit.
-  - If you close an episode mid-way (< 90% watched), remembers your exact timestamp (e.g. `Resume at 24:15`) and resumes automatically at that point with VLC's native `--start-time`.
+  - Remembers exact resume timestamps independently across multiple episodes and seasons.
+  - Resumes automatically with VLC's native `--start-time`.
   - Restart from the beginning anytime via `--from-start` / `--restart` or from the interactive dashboard.
+- **GUI Double-Click Integration (`.desktop` & FreeDesktop XDG)**:
+  - Double-clicking a video file in your file manager (e.g. GNOME Files / Nautilus) routes through OpenNewEpisode.
+  - Automatically recognizes if the clicked video belongs to any of your tracked TV series and resumes your progress.
+  - If you open an episode out of sequence, a native desktop dialog (`zenity`) lets you choose whether to switch your show's progress there, watch as a one-off, or resume your current Up Next episode.
+  - Any non-show video file double-clicked opens directly in VLC without touching your show's tracker.
 - **Smart Completion Detection**:
   - If you watch past the completion threshold (default: 90%), the episode is automatically marked complete and clears resume points.
 - **Multi-Show Support**: Manage multiple TV series simultaneously; switch between shows with one command.
@@ -92,6 +98,8 @@ For quick execution without entering the menu:
 | `onep play --from-start` | Plays Up Next from 0:00, ignoring any saved resume timestamp |
 | `onep resume` (or `onep r`) | Reopens / resumes the last watched episode |
 | `onep resume --from-start` | Reopens the last watched episode from the beginning (0:00) |
+| `onep open <file>` (or `onep o`) | Opens video file with auto-show detection, resume, and prompts |
+| `onep associate` | Sets OpenNewEpisode as default video player for desktop double-clicking |
 | `onep list` (or `onep ls`) | Displays all tracked shows and progress |
 | `onep episodes [show]` | Lists all seasons & episodes with `[✓]` watched status |
 | `onep add <folder>` | Adds a new show folder to track |

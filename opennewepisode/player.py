@@ -290,6 +290,21 @@ def launch_vlc(
         return -1, last_pos, duration
 
 
+def launch_vlc_direct(file_path: Path, vlc_cmd: str = "vlc", extra_args: Optional[List[str]] = None) -> int:
+    """Launches VLC directly for non-show arbitrary video files without tracking."""
+    vlc_bin = resolve_vlc_binary(vlc_cmd) or vlc_cmd
+    cmd = [vlc_bin]
+    if extra_args:
+        cmd.extend(extra_args)
+    cmd.append(str(file_path))
+    try:
+        proc = subprocess.run(cmd, check=False)
+        return proc.returncode
+    except Exception as e:
+        print(f"Error launching VLC: {e}")
+        return 1
+
+
 def prompt_post_watch(episode: Episode, next_ep: Optional[Episode]) -> PostWatchAction:
     """
     Interactively asks user what to do after VLC closes.
