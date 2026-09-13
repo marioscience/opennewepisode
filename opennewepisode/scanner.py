@@ -26,6 +26,21 @@ RELEASE_TAGS = re.compile(
     r"[a-z0-9]+-[a-z0-9]+$)",
 )
 
+# Regex to strip ANSI escape sequences (CSI, OSC, and 2-char sequences) and non-printable control characters (CWE-150 protection)
+ANSI_ESCAPE_RE = re.compile(
+    r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\].*?(?:\x07|\x1b\\)|[PX^_].*?(?:\x07|\x1b\\)|[@-Z\\-_])"
+)
+CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def sanitize_text(text: str) -> str:
+    """Strips ANSI terminal escape sequences and non-printable control characters from text."""
+    if not text:
+        return ""
+    text = ANSI_ESCAPE_RE.sub("", text)
+    text = CONTROL_CHARS_RE.sub("", text)
+    return text
+
 
 @dataclass
 class Episode:
@@ -45,7 +60,7 @@ class Episode:
     def display_name(self) -> str:
         """Friendly display name like 'S01E01 - Pilot'."""
         if self.title:
-            return f"{self.code} - {self.title}"
+            return f"{self.code} - {sanitize_text(self.title)}"
         return self.code
 
     @property
@@ -55,7 +70,8 @@ class Episode:
 
 
 def clean_title(raw_title: str) -> str:
-    """Cleans up raw filename segment into human-readable episode title."""
+    """Cleans up raw filename segment into human-readable episode title, sanitized for terminal display."""
+    raw_title = sanitize_text(raw_title)
     # Strip leading/trailing separators
     raw_title = raw_title.strip(" .-_")
 

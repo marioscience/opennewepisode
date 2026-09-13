@@ -18,7 +18,7 @@ ln -sf "${ENTRYPOINT}" "${TARGET_DIR}/onep"
 # Install desktop entry for GUI double-click integration
 APP_DIR="${HOME}/.local/share/applications"
 mkdir -p "${APP_DIR}"
-cp -f "${SCRIPT_DIR}/opennewepisode.desktop" "${APP_DIR}/opennewepisode.desktop"
+sed "s|^Exec=.*|Exec=${TARGET_DIR}/onep open %f|" "${SCRIPT_DIR}/opennewepisode.desktop" > "${APP_DIR}/opennewepisode.desktop"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "${APP_DIR}" >/dev/null 2>&1 || true

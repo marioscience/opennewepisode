@@ -5,6 +5,7 @@ Provides native desktop dialogs (zenity) when launched without a terminal (e.g. 
 with seamless fallback to terminal prompts when running interactively.
 """
 
+import html
 import shutil
 import subprocess
 import sys
@@ -54,9 +55,13 @@ def prompt_out_of_order(
         opt_one_off = f"Play {target_ep.code} as a one-off (keep {current_up_next.code if current_up_next else 'current'} as Up Next)"
         opt_current = f"Open {current_up_next.code if current_up_next else 'current'} instead (where you left off)"
 
+        target_name_esc = html.escape(target_ep.display_name, quote=False)
+        curr_text_esc = html.escape(curr_text, quote=False)
+        resume_info_esc = html.escape(resume_info, quote=False)
+
         prompt_text = (
-            f"You opened: <b>{target_ep.display_name}</b>{resume_info}\n"
-            f"Your current progress is at: <b>{curr_text}</b>\n\n"
+            f"You opened: <b>{target_name_esc}</b>{resume_info_esc}\n"
+            f"Your current progress is at: <b>{curr_text_esc}</b>\n\n"
             f"What would you like to do?"
         )
 
@@ -130,9 +135,11 @@ def prompt_resume_or_start(ep: Episode, resume_seconds: int) -> bool:
     time_str = format_seconds(resume_seconds)
 
     if is_gui_mode() and shutil.which("zenity"):
+        ep_name_esc = html.escape(ep.display_name, quote=False)
+        time_str_esc = html.escape(time_str, quote=False)
         prompt_text = (
-            f"<b>{ep.display_name}</b> was stopped at <b>{time_str}</b>.\n\n"
-            f"Do you want to resume playback from {time_str} or start from the beginning?"
+            f"<b>{ep_name_esc}</b> was stopped at <b>{time_str_esc}</b>.\n\n"
+            f"Do you want to resume playback from {time_str_esc} or start from the beginning?"
         )
         cmd = [
             "zenity",

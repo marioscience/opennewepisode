@@ -99,7 +99,7 @@ def probe_media_info(video_path: Path) -> Dict[str, Any]:
             [
                 ffprobe, "-v", "error",
                 "-show_entries", "stream=index,codec_type:stream_tags=language,title",
-                "-of", "json", str(video_path)
+                "-of", "json", "--", str(video_path)
             ],
             capture_output=True,
             text=True,
@@ -163,15 +163,21 @@ class PlaybackTracker:
             return
 
         target_service = f"org.mpris.MediaPlayer2.vlc.instance{self.pid}"
+        bus = None
+        poll_count = 0
         while self.is_running:
             try:
-                bus = dbus.SessionBus()
+                if bus is None:
+                    bus = dbus.SessionBus()
                 services = bus.list_names()
                 service_to_use = None
                 if target_service in services:
                     service_to_use = target_service
-                elif "org.mpris.MediaPlayer2.vlc" in services:
-                    service_to_use = "org.mpris.MediaPlayer2.vlc"
+                elif poll_count > 5 and "org.mpris.MediaPlayer2.vlc" in services:
+                    # Avoid crosstalk: only fallback if no other instances exist and PID service not found
+                    instance_services = [s for s in services if s.startswith("org.mpris.MediaPlayer2.vlc.instance")]
+                    if not instance_services:
+                        service_to_use = "org.mpris.MediaPlayer2.vlc"
 
                 if service_to_use:
                     player = bus.get_object(service_to_use, "/org/mpris/MediaPlayer2")
@@ -189,8 +195,9 @@ class PlaybackTracker:
                         if len_raw and int(len_raw) > 0:
                             self.duration = float(len_raw) / 1_000_000.0
             except Exception:
-                pass
+                bus = None
 
+            poll_count += 1
             time.sleep(self.poll_interval)
 
     def stop(self) -> Tuple[int, int]:
@@ -247,6 +254,7 @@ def build_vlc_command(
     if extra_args:
         cmd.extend(extra_args)
 
+    cmd.append("--")
     cmd.append(str(episode.path))
     return cmd
 
@@ -297,6 +305,7 @@ def launch_vlc_direct(file_path: Optional[Path] = None, vlc_cmd: str = "vlc", ex
     if extra_args:
         cmd.extend(extra_args)
     if file_path and str(file_path):
+        cmd.append("--")
         cmd.append(str(file_path))
     try:
         proc = subprocess.run(cmd, check=False)

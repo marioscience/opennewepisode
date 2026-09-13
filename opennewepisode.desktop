@@ -3,10 +3,11 @@ Type=Application
 Name=OpenNewEpisode
 GenericName=TV Show Player & Resume Tracker
 Comment=Watch TV show episodes with automatic resume, auto-play, and progress tracking
-Exec=/home/mario/.local/bin/onep open %F
+Exec=onep open %f
 Icon=vlc
 Terminal=false
 Categories=AudioVideo;Player;Recorder;
-MimeType=video/x-matroska;video/mp4;video/avi;video/quicktime;video/x-msvideo;video/x-flv;video/webm;
+MimeType=video/x-matroska;application/x-matroska;video/mp4;video/avi;video/quicktime;video/x-msvideo;video/x-flv;video/webm;video/x-ms-wmv;video/mpeg;video/mp2t;video/ogg;
 StartupNotify=false
 Keywords=video;vlc;tv;episodes;series;player;resume;
+

@@ -3,6 +3,8 @@
 
 import json
 import os
+import re
+import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -305,8 +307,12 @@ class ConfigManager:
             self.active_show_name = None
 
     def save(self) -> None:
-        """Saves current state to JSON configuration file."""
+        """Saves current state to JSON configuration file with atomic replace and restricted permissions."""
         self.config_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.config_dir.chmod(0o700)
+        except OSError:
+            pass
 
         shows_dict = {}
         for name, s_data in self.shows.items():
@@ -324,10 +330,22 @@ class ConfigManager:
             "shows": shows_dict,
         }
 
-        tmp_file = self.config_file.with_suffix(".tmp")
-        with open(tmp_file, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-        tmp_file.replace(self.config_file)
+        tmp_fd, tmp_path_str = tempfile.mkstemp(
+            prefix="config-",
+            suffix=".tmp",
+            dir=str(self.config_dir),
+            text=True,
+        )
+        tmp_path = Path(tmp_path_str)
+        try:
+            os.chmod(tmp_path, 0o600)
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+            tmp_path.replace(self.config_file)
+        except Exception:
+            if tmp_path.exists():
+                tmp_path.unlink()
+            raise
 
     def get_active_show(self) -> Optional[Tuple[str, ShowData]]:
         """Returns (show_name, ShowData) for active show."""
